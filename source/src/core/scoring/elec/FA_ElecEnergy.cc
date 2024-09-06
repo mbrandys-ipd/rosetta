@@ -74,6 +74,8 @@
 #include <basic/options/option.hh>
 #include <basic/options/keys/run.OptionKeys.gen.hh>
 #include <basic/options/keys/score.OptionKeys.gen.hh>
+#include <basic/options/keys/corrections.OptionKeys.gen.hh>
+#include <basic/options/keys/md.OptionKeys.gen.hh>
 
 #include <core/scoring/elec/electrie/ElecTrieEvaluator.hh> // AUTO IWYU For ElecTrieEvaluator
 
@@ -404,7 +406,14 @@ FA_ElecEnergy::residue_pair_energy(
 {
 	if ( pose.energies().use_nblist() ) return;
 	using namespace etable::count_pair;
+	//mbedit
+	// TR << "residue_pair_energy starting for these rsds:" << std::endl;
+	// TR << "ecalc rsd1 name,seqpos:" << rsd1.name() << "," << rsd1.seqpos() << std::endl;
+	// TR << "ecalc rsd2 name,seqpos:" << rsd2.name() << "," << rsd2.seqpos() << std::endl;
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
 
+	//mbedit end
 	Real score(0.0);
 
 	Real attached_h_max_dis2 = hydrogen_interaction_cutoff2();
@@ -515,6 +524,41 @@ FA_ElecEnergy::residue_pair_energy(
 			}
 		}
 	}
+
+	//mbedit
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			score *= 0.0;
+			// std::cout << "mb debug residue_pair_energy, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+				if ( elec_scale_factor == 0.0 ) {
+					elec_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				score *= elec_scale_factor;
+				// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+				elec_scale_factor = 1.0 - elec_scale_factor;
+				if ( elec_scale_factor == 0.0 ) {
+					elec_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				score *= elec_scale_factor;
+				// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+	//mbedit END
+	
 	emap[ fa_elec ] += score;
 	//std::cout << rsd1.seqpos() << ' ' << rsd2.seqpos() << ' ' << score << std::endl;
 }
@@ -653,6 +697,11 @@ FA_ElecEnergy::residue_pair_energy_ext(
 ) const
 {
 	if ( pose.energies().use_nblist_auto_update() ) return;
+	//mbedit
+	// TR << "residue_pair_energy_ext fxn called" << std::endl;
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	//mbedit end
 
 	debug_assert( rsd1.seqpos() < rsd2.seqpos() );
 	debug_assert( utility::pointer::dynamic_pointer_cast< ResiduePairNeighborList const > (min_data.get_data( elec_pair_nblist ) ));
@@ -662,6 +711,34 @@ FA_ElecEnergy::residue_pair_energy_ext(
 	for ( Size ii = 1, iiend = neighbs.size(); ii <= iiend; ++ii ) {
 		score += score_atom_pair( rsd1, rsd2, neighbs[ ii ].atomno1(), neighbs[ ii ].atomno2(), emap, neighbs[ ii ].weight(), dsq );
 	}
+
+	//mbedit
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy_ext, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			score *= 0.0;
+			// std::cout << "mb debug residue_pair_energy_ext, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+				score *= elec_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+				elec_scale_factor = 1 - elec_scale_factor;
+				score *= elec_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+	//mbedit END
+
 	emap[ fa_elec ] += score;
 }
 
@@ -768,7 +845,13 @@ FA_ElecEnergy::eval_residue_pair_derivatives(
 
 	debug_assert( rsd1.seqpos() < rsd2.seqpos() );
 	debug_assert( utility::pointer::dynamic_pointer_cast< ResiduePairNeighborList const > (min_data.get_data( elec_pair_nblist ) ));
-
+	//mbedit
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	// TR << "start of eval_residue_pair_derivatives:" << std::endl;
+	// TR << "deriv calc rsd1 seqpos:" << rsd1.name() << "," << rsd1.seqpos() << std::endl;
+	// TR << "deriv calc rsd2 seqpos:" << rsd2.name() << "," << rsd2.seqpos() << std::endl;
+	//mbedit end
 	auto const & nblist( static_cast< ResiduePairNeighborList const & > ( min_data.get_data_ref( elec_pair_nblist ) ) );
 	utility::vector1< SmallAtNb > const & neighbs( nblist.atom_neighbors() );
 
@@ -796,6 +879,39 @@ FA_ElecEnergy::eval_residue_pair_derivatives(
 			f1 = atom1xyz.cross( atom2xyz );
 			Vector f1s = dE_dr_over_r * sfxn_weight * f1;
 			Vector f2s = dE_dr_over_r * sfxn_weight * f2;
+			
+			//mbedit:
+			// double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+			// f1s *= elec_scale_factor;
+			// f2s *= elec_scale_factor;
+			if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+				// std::cout << "mb debug eval_residue_pair_derivatives, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+				std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+				std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+				// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+				
+				if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+					f1s *= 0;
+					f2s *= 0;
+					// std::cout << "mb debug eval_residue_pair_derivatives, rsd1 and rsd2 are both the lig of interest; f1s/f2s * 0" << std::endl; //debug
+				} else {
+					if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+						double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+						f1s *= elec_scale_factor;
+						f2s *= elec_scale_factor;
+						// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+					}
+
+					if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+						double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+						elec_scale_factor = 1 - elec_scale_factor;
+						f1s *= elec_scale_factor;
+						f2s *= elec_scale_factor;
+						// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+					}
+				}
+			}
+			//mbedit end
 			r1_atom_derivs[ at1 ].f1() += f1s;
 			r1_atom_derivs[ at1 ].f2() += f2s;
 			r2_atom_derivs[ at2 ].f1() -= f1s;
@@ -815,7 +931,8 @@ FA_ElecEnergy::eval_intrares_derivatives(
 ) const
 {
 	if ( pose.energies().use_nblist_auto_update() ) return;
-
+	//mbedit, one line:
+	// TR << "eval_intrares_derivatives starting..." << std::endl;
 	using namespace etable::count_pair;
 	if ( weights[ fa_intra_elec ] == 0 ) return;
 	Real sfxn_weight = weights[fa_intra_elec];
@@ -900,6 +1017,8 @@ FA_ElecEnergy::eval_intrares_derivatives(
 			atom_derivs[ jj ].f2() -= f2;
 		}
 	}
+	//mbedit one line
+	// TR << "eval_intrares_derivatives ending..." << std::endl;
 }
 
 
@@ -918,7 +1037,8 @@ FA_ElecEnergy::eval_atom_derivative(
 {
 	using namespace etable::count_pair;
 	if ( ! pose.energies().use_nblist_auto_update() ) return;
-
+	//mbedit - TR
+	// TR << "start of eval_atom_derivative:" << std::endl;
 	// what is my charge?
 	Size const i( atom_id.rsd() );
 	Size const ii( atom_id.atomno() );
@@ -957,6 +1077,8 @@ FA_ElecEnergy::eval_atom_derivative(
 		F1 += f1;
 		F2 += f2;
 	}
+	//mbedit - TR
+	// TR << "end of eval_atom_derivative:" << std::endl;
 }
 
 void
@@ -972,7 +1094,8 @@ FA_ElecEnergy::backbone_backbone_energy(
 	using namespace chemical;
 
 	Real score(0.0);
-
+	//mbedit - TR line:
+	// TR << "backbone_backbone_energy starting" << std::endl;
 	if ( ! defines_score_for_residue_pair(rsd1, rsd2, true) ) return;
 
 	if ( rsd1.is_bonded( rsd2 ) || rsd1.is_pseudo_bonded( rsd2 ) ) {
@@ -1034,6 +1157,8 @@ FA_ElecEnergy::backbone_backbone_energy(
 			}
 		}
 	}
+	//mbedit - TR line:
+	// TR << "backbone_backbone_energy ending" << std::endl;
 	emap[ fa_elec_bb_bb ] += score;
 	emap[ fa_elec ] += score;
 	//std::cout << rsd1.seqpos() << ' ' << rsd2.seqpos() << ' ' << score << std::endl;
@@ -1052,7 +1177,8 @@ FA_ElecEnergy::backbone_sidechain_energy(
 	using namespace chemical;
 
 	Real score(0.0);
-
+	//mbedit - TR line:
+	// TR << "backbone_sidechain_energy starting" << std::endl;
 	if ( ! defines_score_for_residue_pair(rsd1, rsd2, true) ) return;
 
 	if ( rsd1.is_bonded( rsd2 ) || rsd1.is_pseudo_bonded( rsd2 ) ) {
@@ -1113,6 +1239,8 @@ FA_ElecEnergy::backbone_sidechain_energy(
 			}
 		}
 	}
+	//mbedit - TR line:
+	// TR << "backbone_sidechain_energy ending" << std::endl;
 	emap[ fa_elec_bb_sc ] += score;
 	emap[ fa_elec ] += score;
 	//std::cout << rsd1.seqpos() << ' ' << rsd2.seqpos() << ' ' << score << std::endl;
@@ -1133,7 +1261,8 @@ FA_ElecEnergy::sidechain_sidechain_energy(
 	using namespace chemical;
 
 	Real score(0.0);
-
+	//mbedit - TR line:
+	// TR << "sidechain_sidechain_energy starting" << std::endl;
 	if ( ! defines_score_for_residue_pair(rsd1, rsd2, true) ) return;
 
 	if ( rsd1.is_bonded( rsd2 ) || rsd1.is_pseudo_bonded( rsd2 ) ) {
@@ -1194,6 +1323,8 @@ FA_ElecEnergy::sidechain_sidechain_energy(
 			}
 		}
 	}
+	//mbedit - TR line:
+	// TR << "sidechain_sidechain_energy ending" << std::endl;
 	emap[ fa_elec_sc_sc ] += score;
 	emap[ fa_elec ] += score;
 	//std::cout << rsd1.seqpos() << ' ' << rsd2.seqpos() << ' ' << score << std::endl;

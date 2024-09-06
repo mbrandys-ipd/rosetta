@@ -56,9 +56,18 @@ constraint_relax( core::pose::Pose &pose,
 );
 
 void
-make_ligand_only_pose( core::pose::PoseOP pose_new,
-	core::pose::PoseCOP pose, //pass by value
+make_ligand_only_pose(
+	core::pose::PoseOP pose_new,
+	core::pose::PoseCOP pose,
 	utility::vector1< core::Size > const& lig_resnos
+);
+
+void
+make_minipose(
+	core::pose::PoseOP minipose,
+	core::pose::PoseCOP fullpose,
+	utility::vector1< core::Size > const& lig_resnos,
+	utility::vector1< core::Size > const& movable_scs
 );
 
 void
@@ -98,6 +107,10 @@ compute_nhbonds(core::pose::Pose const& pose,
 	utility::vector1<core::Size> const& resids,
 	core::Size & nhbonds_total, core::Size & nhbonds_max1,
 	bool const& include_bb, std::string const& hb_metric);
+
+void
+dump_ligand_conformers(LigandConformers const& conformers,
+	std::string const& extra);
 
 }
 }

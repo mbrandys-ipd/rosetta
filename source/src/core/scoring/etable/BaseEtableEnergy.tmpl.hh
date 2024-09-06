@@ -68,10 +68,11 @@
 
 // option key includes
 #include <basic/options/keys/score.OptionKeys.gen.hh>
+#include <basic/options/keys/corrections.OptionKeys.gen.hh>
 #include <basic/options/keys/run.OptionKeys.gen.hh>
+#include <basic/options/keys/md.OptionKeys.gen.hh>
 
 #include <core/scoring/etable/Etable.hh> // AUTO IWYU For Etable
-
 
 namespace core {
 namespace scoring {
@@ -771,6 +772,7 @@ BaseEtableEnergy< Derived >::residue_pair_energy(
 	EnergyMap & emap
 ) const
 {
+	
 	debug_assert( rsd1.seqpos() != rsd2.seqpos() );
 	//std::cerr << __FILE__<< ' ' << __LINE__ << std::endl;
 
@@ -780,8 +782,67 @@ BaseEtableEnergy< Derived >::residue_pair_energy(
 		//cpfxn->residue_atom_pair_energy( rsd1, rsd2, static_cast<Derived const&> (*this), emap );
 		if ( !calculate_interres( rsd1, rsd2 ) ) return;
 		count_pair::CPCrossoverBehavior crossover = determine_crossover_behavior( rsd1, rsd2, pose, sfxn );
-		WholeWholeEnergyInvoker< typename Derived::Evaluator > invoker( rsd1, rsd2, static_cast< Derived const & > (*this).interres_evaluator(), emap );
+		
+		//mbedit (next 3 lines):
+		using namespace basic::options;
+		using namespace basic::options::OptionKeys;
+		EnergyMap emap_ij;
+		
+		//mbedit: the following line was original, i just changed emap to emap_ij:
+		WholeWholeEnergyInvoker< typename Derived::Evaluator > invoker( rsd1, rsd2, static_cast< Derived const & > (*this).interres_evaluator(), emap_ij );
 		count_pair::CountPairFactory::create_count_pair_function_and_invoke( rsd1, rsd2, crossover, invoker );
+		
+		//mbedit:
+		if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+			// std::cout << "mb debug residue_pair_energy, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+			std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+			std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+			// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+			
+			if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {	
+				emap_ij[scoring::fa_atr] *= 0.0;
+				emap_ij[scoring::fa_rep] *= 0.0;
+				emap_ij[scoring::fa_sol] *= 0.0;
+				// std::cout << "mb debug residue_pair_energy, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+			} else {
+				if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+					double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+					if ( lj_scale_factor == 0.0 ) {
+						lj_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					emap_ij[scoring::fa_atr] *= lj_scale_factor;
+					emap_ij[scoring::fa_rep] *= lj_scale_factor;
+
+					double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+					if ( sol_scale_factor == 0.0 ) {
+						sol_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					emap_ij[scoring::fa_sol] *= sol_scale_factor;
+					// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+				}
+
+				if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+					double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+					lj_scale_factor = 1.0 - lj_scale_factor;
+					if ( lj_scale_factor == 0.0 ) {
+						lj_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					emap_ij[scoring::fa_atr] *= lj_scale_factor;
+					emap_ij[scoring::fa_rep] *= lj_scale_factor;
+					
+					double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+					sol_scale_factor = 1.0 - sol_scale_factor;
+					if ( sol_scale_factor == 0.0 ) {
+						sol_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					emap_ij[scoring::fa_sol] *= sol_scale_factor;
+					// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+				}
+			}
+		}
+
+		emap += emap_ij;
+		//mbedit done
 	}
 }
 
@@ -805,7 +866,11 @@ BaseEtableEnergy< Derived >::residue_pair_energy_ext(
 {
 
 	if ( pose.energies().use_nblist_auto_update() ) return;
-
+	//mbedit start:
+	EnergyMap emap_ij;
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	//mbedit end
 	///prepare_for_residue_pair( 1,2, pose ); // set inter-res
 	debug_assert( utility::pointer::dynamic_pointer_cast< ResiduePairNeighborList const > (min_data.get_data( min_pair_data_type() ) ));
 	ResiduePairNeighborList const & nblist( static_cast< ResiduePairNeighborList const & > ( min_data.get_data_ref( min_pair_data_type() ) ) );
@@ -813,12 +878,50 @@ BaseEtableEnergy< Derived >::residue_pair_energy_ext(
 	for ( auto const & nbr: nblist.atom_neighbors() ) {
 		conformation::Atom const & atom1( rsd1.atom( nbr.atomno1() ) );
 		conformation::Atom const & atom2( rsd2.atom( nbr.atomno2() ) );
-
-		static_cast< Derived const & > (*this).interres_evaluator().atom_pair_energy( atom1, atom2, nbr.weight(), emap, dsq );
+	//mbedit: i changed emap to emap_ij in this next line
+		static_cast< Derived const & > (*this).interres_evaluator().atom_pair_energy( atom1, atom2, nbr.weight(), emap_ij, dsq );
 #ifdef APL_TEMP_DEBUG
 		++mingraph_n_atpairE_evals();
 #endif
 	}
+
+	//mbedit:
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy_ext, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			emap_ij[scoring::fa_atr] *= 0.0;
+			emap_ij[scoring::fa_rep] *= 0.0;
+			emap_ij[scoring::fa_sol] *= 0.0;
+			// std::cout << "mb debug residue_pair_energy_ext, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+				emap_ij[scoring::fa_atr] *= lj_scale_factor;
+				emap_ij[scoring::fa_rep] *= lj_scale_factor;
+				double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+				emap_ij[scoring::fa_sol] *= sol_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+				lj_scale_factor = 1 - lj_scale_factor;
+				emap_ij[scoring::fa_atr] *= lj_scale_factor;
+				emap_ij[scoring::fa_rep] *= lj_scale_factor;
+				double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+				sol_scale_factor = 1 - sol_scale_factor;
+				emap_ij[scoring::fa_sol] *= sol_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+
+	//mbedit end
+	emap += emap_ij;
 }
 
 template < class Derived >
@@ -1057,6 +1160,46 @@ BaseEtableEnergy< Derived >::eval_residue_pair_derivatives(
 	}
 	}*/
 
+	//mbedit
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	EnergyMap weights_ij = weights;
+	
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug eval_residue_pair_derivatives, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			weights_ij[scoring::fa_atr] *= 0.0;
+			weights_ij[scoring::fa_rep] *= 0.0;
+			weights_ij[scoring::fa_sol] *= 0.0;
+			// std::cout << "mb debug eval_residue_pair_derivatives, rsd1 and rsd2 are both the lig of interest; f1s/f2s * 0" << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+				weights_ij[scoring::fa_atr] *= lj_scale_factor;
+				weights_ij[scoring::fa_rep] *= lj_scale_factor;
+				double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+				weights_ij[scoring::fa_sol] *= sol_scale_factor;
+				// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double lj_scale_factor = option[ corrections::score::lj_md_scale_factor ];
+				lj_scale_factor = 1 - lj_scale_factor;
+				weights_ij[scoring::fa_atr] *= lj_scale_factor;
+				weights_ij[scoring::fa_rep] *= lj_scale_factor;
+				double sol_scale_factor = option[ corrections::score::sol_md_scale_factor ];
+				sol_scale_factor = 1 - sol_scale_factor;
+				weights_ij[scoring::fa_sol] *= sol_scale_factor;
+				// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+
+	//mbedit end
 	debug_assert( r1_at_derivs.size() >= rsd1.natoms() );
 	debug_assert( r2_at_derivs.size() >= rsd2.natoms() );
 
@@ -1065,14 +1208,16 @@ BaseEtableEnergy< Derived >::eval_residue_pair_derivatives(
 
 	//prepare_for_residue_pair( 1, 2, pose ); // set inter-res
 	typename Derived::Evaluator evaluator( static_cast< Derived const & > (*this).interres_evaluator() );
-	evaluator.set_weights( weights );
+	//mbedit; changed the next line by turning weights into weights_ij
+	evaluator.set_weights( weights_ij );
 
 	Vector f1,f2;
 	utility::vector1< SmallAtNb > const & neighbs( nblist.atom_neighbors() );
 	for ( Size ii = 1, iiend = neighbs.size(); ii <= iiend; ++ii ) {
 		conformation::Atom const & atom1( rsd1.atom( neighbs[ ii ].atomno1() ) );
 		conformation::Atom const & atom2( rsd2.atom( neighbs[ ii ].atomno2() ) );
-		Real const dE_dR_over_r( evaluator.eval_dE_dR_over_r( atom1, atom2, weights, f1, f2 ) );
+		//mbedit: changed the next line by turning weights into weights_ij
+		Real const dE_dR_over_r( evaluator.eval_dE_dR_over_r( atom1, atom2, weights_ij, f1, f2 ) );
 		//std::cout << "  atom deriv: " << rsd1.seqpos() << " " << atom_index << " with " << rsd2.seqpos() << " " << nbr->atomno() << ". w= " << nbr->weight() << " dE_dR_over_r: " << dE_dR_over_r <<  std::endl;
 		if ( dE_dR_over_r != 0.0 ) {
 			f1 *= dE_dR_over_r * neighbs[ ii ].weight();

@@ -60,6 +60,7 @@ EtableOptions::EtableOptions( utility::options::OptionCollection const & options
 	lj_switch_dis2sigma( 0.6 ),
 	no_lk_polar_desolvation( false ),
 	proline_N_is_lk_nonpolar( false),
+	lj_hbond_dis(3.0),
 	lj_hbond_OH_donor_dis(/*3.0*/2.6),
 	lj_hbond_hdis(/*1.95*/1.75),
 	enlarge_h_lj_wdepth(false),
@@ -91,6 +92,7 @@ EtableOptions::operator=( EtableOptions const & src )
 		lj_switch_dis2sigma = src.lj_switch_dis2sigma;
 		no_lk_polar_desolvation = src.no_lk_polar_desolvation;
 		proline_N_is_lk_nonpolar = src.proline_N_is_lk_nonpolar;
+		lj_hbond_dis = src.lj_hbond_dis;
 		lj_hbond_OH_donor_dis = src.lj_hbond_OH_donor_dis;
 		lj_hbond_hdis = src.lj_hbond_hdis;
 		enlarge_h_lj_wdepth = src.enlarge_h_lj_wdepth;
@@ -133,6 +135,9 @@ operator < ( EtableOptions const & a, EtableOptions const & b )
 	if      ( a.lj_hbond_OH_donor_dis < b.lj_hbond_OH_donor_dis )  { return true;  }
 	else if ( a.lj_hbond_OH_donor_dis != b.lj_hbond_OH_donor_dis ) { return false; }
 
+	if      ( a.lj_hbond_dis < b.lj_hbond_dis )  { return true;  }
+        else if ( a.lj_hbond_dis != b.lj_hbond_dis ) { return false; }
+
 	if      ( a.lj_hbond_hdis < b.lj_hbond_hdis )  { return true;  }
 	else if ( a.lj_hbond_hdis != b.lj_hbond_hdis ) { return false; }
 
@@ -156,6 +161,7 @@ operator==( EtableOptions const & a, EtableOptions const & b )
 		( a.lj_switch_dis2sigma == b.lj_switch_dis2sigma ) &&
 		( a.no_lk_polar_desolvation == b.no_lk_polar_desolvation ) &&
 		( a.proline_N_is_lk_nonpolar == b.proline_N_is_lk_nonpolar) &&
+		( a.lj_hbond_dis == b.lj_hbond_dis ) &&
 		( a.lj_hbond_OH_donor_dis == b.lj_hbond_OH_donor_dis ) &&
 		( a.lj_hbond_hdis == b.lj_hbond_hdis ) &&
 		( a.enlarge_h_lj_wdepth == b.enlarge_h_lj_wdepth ) &&
@@ -180,6 +186,7 @@ EtableOptions::show( std::ostream & out ) const
 	out <<"EtableOptions::lj_switch_dis2sigma: " << lj_switch_dis2sigma << std::endl;
 	out <<"EtableOptions::no_lk_polar_desolvation: " << no_lk_polar_desolvation << std::endl;
 	out <<"EtableOptions::proline_N_is_lk_nonpolar: " << proline_N_is_lk_nonpolar << std::endl;
+	out <<"EtableOptions::lj_hbond_dis: " << lj_hbond_dis << std::endl;
 	out <<"EtableOptions::lj_hbond_OH_donor_dis: " << lj_hbond_OH_donor_dis << std::endl;
 	out <<"EtableOptions::lj_hbond_hdis: " << lj_hbond_hdis << std::endl;
 	out <<"EtableOptions::enlarge_h_lj_wdepth: " << enlarge_h_lj_wdepth << std::endl;
@@ -192,6 +199,14 @@ EtableOptions::parse_my_tag(
 ) {
 	if ( tag->hasOption( "lj_hbond_OH_donor_dis" ) ) {
 		lj_hbond_OH_donor_dis = tag->getOption<core::Real>( "lj_hbond_OH_donor_dis" );
+	}
+
+	if ( tag->hasOption( "lj_hbond_dis" ) ) {
+         lj_hbond_dis = tag->getOption<core::Real>( "lj_hbond_dis" );
+        }
+
+	if ( tag->hasOption( "lj_switch_dis2sigma" ) ) {
+		lj_switch_dis2sigma = tag->getOption<core::Real>( "lj_switch_dis2sigma" );
 	}
 
 	if ( tag->hasOption( "lj_hbond_hdis" ) ) {
@@ -210,6 +225,8 @@ EtableOptions::append_schema_attributes( utility::tag::AttributeList & attribute
 	using namespace utility::tag;
 	attributes
 		+ XMLSchemaAttribute( "lj_hbond_OH_donor_dis", xsct_real , "Lennard Jones sigma value for O in OH donor groups" )
+		+ XMLSchemaAttribute( "lj_switch_dis2sigma", xsct_real , "cutoff for Lennard Jones function because it becomes linear; default 0.6" )
+		+ XMLSchemaAttribute( "lj_hbond_dis", xsct_real , "Lennard Jones sigma value for donor in acceptor-donor groups" )
 		+ XMLSchemaAttribute( "lj_hbond_hdis", xsct_real , "Lennard Jones sigma value for hatms, classically it's been at 1.95 but the average A-H distance for hydrogen bonding is 1.75 from crystal structures" )
 		+ XMLSchemaAttribute( "fa_max_dis", xsct_real , "Max distance for energy function calculations, in angstroms" );
 }
@@ -235,6 +252,8 @@ EtableOptions::initialize_from_options( utility::options::OptionCollection const
 	}
 
 	lj_hbond_OH_donor_dis = options[ corrections::score::lj_hbond_OH_donor_dis ];
+	lj_hbond_dis = options[ corrections::score::lj_hbond_dis ];
+	lj_switch_dis2sigma = options[ corrections::score::lj_switch_dis2sigma ];
 	lj_hbond_hdis = options[ corrections::score::lj_hbond_hdis ];
 	fa_hatr = options[ score::fa_Hatr ];
 	analytic_membetable_evaluation = options[ mp::scoring::analytic_membetable_evaluation ];
@@ -245,6 +264,8 @@ EtableOptions::list_options_read( utility::options::OptionKeyList & options_read
 {
 	using namespace basic::options::OptionKeys;
 	options_read
+		+ corrections::score::lj_hbond_dis
+		+ corrections::score::lj_switch_dis2sigma
 		+ corrections::score::lj_hbond_hdis
 		+ corrections::score::lj_hbond_OH_donor_dis
 		+ score::analytic_etable_evaluation
@@ -275,6 +296,7 @@ core::scoring::etable::EtableOptions::save( Archive & arc ) const {
 	arc( CEREAL_NVP( lj_switch_dis2sigma ) ); // Real
 	arc( CEREAL_NVP( no_lk_polar_desolvation ) ); // _Bool
 	arc( CEREAL_NVP( proline_N_is_lk_nonpolar ) ); // _Bool
+	arc( CEREAL_NVP( lj_hbond_dis ) ); // Real
 	arc( CEREAL_NVP( lj_hbond_OH_donor_dis ) ); // Real
 	arc( CEREAL_NVP( lj_hbond_hdis ) ); // Real
 	arc( CEREAL_NVP( enlarge_h_lj_wdepth ) ); // _Bool
@@ -294,6 +316,7 @@ core::scoring::etable::EtableOptions::load( Archive & arc ) {
 	arc( lj_switch_dis2sigma ); // Real
 	arc( no_lk_polar_desolvation ); // _Bool
 	arc( proline_N_is_lk_nonpolar ); // _Bool
+	arc( lj_hbond_dis ); // Real
 	arc( lj_hbond_OH_donor_dis ); // Real
 	arc( lj_hbond_hdis ); // Real
 	arc( enlarge_h_lj_wdepth ); // _Bool

@@ -44,15 +44,25 @@ public:
 	~Thermostat()= default;
 
 	void
-	rescale( core::optimization::Multivec &vel, core::Real const& dt, core::optimization::Multivec const &mass ){
-		core::Real curr_temperature = get_temperature( vel, mass );
-
-		core::Real delta  = (temp0_/Boltzmann)/curr_temperature;
-		core::Real lambda = std::sqrt(1.0 + dt/tau_*(delta-1.0));
-
+	rescale( 
+		core::optimization::Multivec &vel, 
+		core::Real const& dt, 
+		core::optimization::Multivec const &mass,
+		bool const nve_mode )
+	{
+		core::Real lambda = 1.0;
+		
+		//if nve_mode = false, aka temperature SHOULD be rescaled, calculate lambda (rescale value for velocity in this context)
+		if (!nve_mode) {
+			core::Real curr_temperature = get_temperature( vel, mass );
+			core::Real delta  = (temp0_/Boltzmann)/curr_temperature;
+			lambda = std::sqrt(1.0 + dt/tau_*(delta-1.0));
+		}
+		
 		for ( core::Size i_dof = 1; i_dof <= vel.size(); ++i_dof ) {
 			vel[i_dof] *= lambda;
 		}
+		// std::cout << "mb debug, inside thermostat rescale(); nve_mode is: " << nve_mode << "and rescale factor (lambda) is: " << lambda << std::endl;
 	}
 
 	core::Real
@@ -67,7 +77,7 @@ public:
 
 			temperature += mass[i_atm]*vel[i_dof]*vel[i_dof];
 		}
-		temperature /= ndof_*Boltzmann;
+		temperature /= ndof_*Boltzmann; //mbedit question: is this supposed to be temperature /= (ndof_*Boltzmann)?
 		return temperature;
 	}
 

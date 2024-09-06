@@ -324,6 +324,20 @@ public:
 	bool
 	is_ligand_bb_frozen() const { return ( freeze_ligand_ || freeze_ligand_backbone_ ); }
 
+	void
+	fix_ligand_chi( core::Size ichi, bool setting ) { ligandchis_fixed_[ichi] = setting; }
+
+	void
+	set_ligand_chis_fixed( utility::vector1< bool > const & setting ) { ligandchis_fixed_ = setting; }
+
+	bool
+	is_ligand_chi_fixed( core::Size ichi ) const { return ligandchis_fixed_[ichi]; }
+
+	void
+	set_free_ligandchi_ndx( utility::vector1< core::Size > const & setting ) { free_ligandchi_ndx_ = setting; }
+
+	utility::vector1< core::Size > const &
+	get_free_ligandchi_ndx() const { return free_ligandchi_ndx_; }
 
 private:
 
@@ -355,6 +369,8 @@ private:
 	// the internal representation of the pose
 	utility::vector1< core::Real > rb_;
 	utility::vector1< core::Real > ligandchis_;
+	utility::vector1< bool > ligandchis_fixed_;
+	utility::vector1< core::Size > free_ligandchi_ndx_;
 	utility::vector1< TorsionType > ligandchi_types_;
 	utility::vector1< core::id::TorsionID > ligandtorsionids_;
 	std::map< core::Size, core::chemical::ResidueTypeCOP > ligid_restype_map_;

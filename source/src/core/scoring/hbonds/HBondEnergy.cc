@@ -72,6 +72,11 @@
 #include <utility/vector1.hh>
 #include <boost/unordered_map.hpp>
 
+// option keys - mbrandys
+#include <basic/options/option.hh>
+#include <basic/options/keys/corrections.OptionKeys.gen.hh>
+#include <basic/options/keys/md.OptionKeys.gen.hh>
+
 
 #ifdef SERIALIZATION
 // Project serialization headers
@@ -376,6 +381,11 @@ HBondEnergy::residue_pair_energy(
 	if ( hbond_set.hbond_options().water_hybrid_sf() ) {
 		if ( residue_near_water( pose, rsd1.seqpos() ) || residue_near_water( pose, rsd2.seqpos() ) ) bond_near_wat = true;
 	}
+	//mbedit
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	EnergyMap emap_ij; //mbrandys, creating empty emap called emap_ij to fill and possibly rescale for fep-md protocols
+	//mbedit end
 
 	// this only works because we have already called
 	// hbond_set->setup_for_residue_pair_energies( pose )
@@ -442,14 +452,17 @@ HBondEnergy::residue_pair_energy(
 		Real ssdep_weight_factor = get_ssdep_weight(rsd1, rsd2, pose, ssdep);
 
 		boost::unordered_map< core::Size, core::Size > num_hbonds; //Not actually used, but required for identify_hbonds_1way function signature.
-
+		
+		//mbedit: i made here in each identify_hbonds_1way was to change emap to emap_ij
 		identify_hbonds_1way(
 			*database_,
 			rsd1, rsd2, hbond_set.nbrs(rsd1.seqpos()), hbond_set.nbrs(rsd2.seqpos()),
 			false /*calculate_derivative*/,
 			!options_->decompose_bb_hb_into_pair_energies(), exclude_bsc, exclude_scb, false,
 			*options_,
-			emap, num_hbonds, ssdep_weight_factor, bond_near_wat );
+			emap_ij, num_hbonds, ssdep_weight_factor, bond_near_wat );
+		//mbedit TR
+		// TR << "after residue pair energy 1st identify_hbonds_1way fxn, emap_ij[scoring::hbond_sc]: " << emap_ij[scoring::hbond_sc] << std::endl;
 
 		exclude_bsc = exclude_scb = false;
 		if ( rsd2.is_protein() ) exclude_scb = options_->bb_donor_acceptor_check() && hbond_set.don_bbg_in_bb_bb_hbond(rsd2.seqpos());
@@ -461,8 +474,54 @@ HBondEnergy::residue_pair_energy(
 			false /*calculate_derivative*/,
 			!options_->decompose_bb_hb_into_pair_energies(), exclude_bsc, exclude_scb, false,
 			*options_,
-			emap, num_hbonds, ssdep_weight_factor, bond_near_wat );
+			emap_ij, num_hbonds, ssdep_weight_factor, bond_near_wat );
+		//mbedit TR
+		// TR << "after residue pair energy 2nd identify_hbonds_1way fxn, emap_ij[scoring::hbond_sc]: " << emap_ij[scoring::hbond_sc] << std::endl;
+
 	}
+
+	//mbedit:
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			emap_ij[scoring::hbond_sr_bb] *= 0.0;
+			emap_ij[scoring::hbond_lr_bb] *= 0.0;
+			emap_ij[scoring::hbond_bb_sc] *= 0.0;
+			emap_ij[scoring::hbond_sc] *= 0.0;
+			// std::cout << "mb debug residue_pair_energy, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				if ( hb_scale_factor == 0.0 ) {
+					hb_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				emap_ij[scoring::hbond_sc] *= hb_scale_factor;
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				hb_scale_factor = 1.0 - hb_scale_factor;
+				if ( hb_scale_factor == 0.0 ) {
+					hb_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				emap_ij[scoring::hbond_sc] *= hb_scale_factor;
+				// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+	
+	emap += emap_ij;
+	//mbedit END
 }
 
 bool
@@ -505,7 +564,13 @@ HBondEnergy::residue_pair_energy_ext(
 
 	debug_assert( utility::pointer::dynamic_pointer_cast< HBondResPairMinData const > ( pairdata.get_data( hbond_respair_data ) ));
 	auto const & hb_pair_dat( static_cast< HBondResPairMinData const & > ( pairdata.get_data_ref( hbond_respair_data ) ));
-
+	//mbedit - FYI all emap variables in this function were changed to emap_ij (but not in the membrane related code)
+	// TR << "hb residue_pair_energy_ext fxn called" << std::endl;
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	EnergyMap emap_ij;
+	// TR << "residue_pair_energy_ext starting (hb): emap_ij[scoring::hbond_sc] initial: " << emap_ij[scoring::hbond_sc] << std::endl;
+	//mbedit end
 	using EnergiesCacheableDataType::HBOND_SET; // jklai
 	auto const & hbond_set
 		( static_cast< hbonds::HBondSet const & >
@@ -579,7 +644,10 @@ HBondEnergy::residue_pair_energy_ext(
 				false /*calculate_derivative*/,
 				false, exclude_bsc, exclude_scb, false,
 				*options_,
-				emap, ssdep_weight_factor, bond_near_wat);
+				emap_ij, ssdep_weight_factor, bond_near_wat);
+			//mbedit TR
+			// TR << "after residue pair energy EXT 1st identify_hbonds_1way fxn, emap_ij[scoring::hbond_sc]: " << emap_ij[scoring::hbond_sc] << std::endl;
+
 		}
 
 		{ // scope
@@ -596,9 +664,52 @@ HBondEnergy::residue_pair_energy_ext(
 				false /*calculate_derivative*/,
 				false, exclude_bsc, exclude_scb, false,
 				*options_,
-				emap, ssdep_weight_factor, bond_near_wat);
+				emap_ij, ssdep_weight_factor, bond_near_wat);
+			//mbedit TR
+			// TR << "after residue pair energy EXT 2nd identify_hbonds_1way fxn, emap_ij[scoring::hbond_sc]: " << emap_ij[scoring::hbond_sc] << std::endl;
+
 		}
 	}
+	//mbedit:
+
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy_ext, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			emap_ij[scoring::hbond_sr_bb] *= 0.0;
+			emap_ij[scoring::hbond_lr_bb] *= 0.0;
+			emap_ij[scoring::hbond_bb_sc] *= 0.0;
+			emap_ij[scoring::hbond_sc] *= 0.0;
+			// std::cout << "mb debug residue_pair_energy_ext, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				emap_ij[scoring::hbond_sc] *= hb_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				hb_scale_factor = 1 - hb_scale_factor;
+				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				emap_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				emap_ij[scoring::hbond_sc] *= hb_scale_factor;
+				// std::cout << "mb debug residue_pair_energy_ext pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+
+	//mbedit:
+	// TR << "end of residue pair energy EXT, emap_ij[scoring::hbond_sc]: " << emap_ij[scoring::hbond_sc] << std::endl;
+	emap += emap_ij;
+	//mbedit end
 }
 
 /// @details Note that this function helps enforce the bb/sc exclusion rule by setting the donor and acceptor availability
@@ -821,7 +932,8 @@ HBondEnergy::eval_residue_pair_derivatives(
 
 	/// Iterate across all acceptor and donor atom pairs for these two residues, and write down the hydrogen bonds
 	/// that are formed.
-
+	//mbedit 1 liner:
+	// TR << "hb eval_residue_pair_derivatives fxn starting" << std::endl;
 	using EnergiesCacheableDataType::HBOND_SET;
 
 	auto const & hbondset = static_cast< HBondSet const & > (pose.energies().data().get( HBOND_SET ));
@@ -847,14 +959,53 @@ HBondEnergy::eval_residue_pair_derivatives(
 		if ( residue_near_water( pose, rsd1.seqpos() ) || residue_near_water( pose, rsd2.seqpos() ) ) bond_near_wat = true;
 	}
 
+	//mbedit:
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	EnergyMap weights_ij = weights;
+
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug eval_residue_pair_derivatives, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			weights_ij[scoring::hbond_sr_bb] *= 0.0;
+			weights_ij[scoring::hbond_lr_bb] *= 0.0;
+			weights_ij[scoring::hbond_bb_sc] *= 0.0;
+			weights_ij[scoring::hbond_sc] *= 0.0;
+			// std::cout << "mb debug eval_residue_pair_derivatives, rsd1 and rsd2 are both the lig of interest; f1s/f2s * 0" << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				weights_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				weights_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				weights_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				weights_ij[scoring::hbond_sc] *= hb_scale_factor;
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
+				hb_scale_factor = 1 - hb_scale_factor;
+				weights_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
+				weights_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
+				weights_ij[scoring::hbond_bb_sc] *= hb_scale_factor;
+				weights_ij[scoring::hbond_sc] *= hb_scale_factor;
+			}
+		}
+	}
+
+	//mbedit end
+
 	{ // scope
 		/// 1st == find hbonds with donor atoms on rsd1
 		/// case A: sc is acceptor, bb is donor && res2 is the acceptor residue -> look at the donor availability of residue 1
 		bool exclude_scb( ! hb_pair_dat.res1_data().bb_don_avail() );
 		/// case B: bb is acceptor, sc is donor && res2 is the acceptor residue -> look at the acceptor availability of residue 2
 		bool exclude_bsc( ! hb_pair_dat.res2_data().bb_acc_avail() );
-
-		hbond_derivs_1way( weights, hbondset, database_, pose, rsd1, rsd2, rsd1nneighbs, rsd2nneighbs, exclude_bsc, exclude_scb, ssdep_weight_factor, r1_atom_derivs, r2_atom_derivs, bond_near_wat );
+		//mbedit: changing weights here to weights_ij
+		hbond_derivs_1way( weights_ij, hbondset, database_, pose, rsd1, rsd2, rsd1nneighbs, rsd2nneighbs, exclude_bsc, exclude_scb, ssdep_weight_factor, r1_atom_derivs, r2_atom_derivs, bond_near_wat );
 	}
 
 	{ // scope
@@ -863,9 +1014,11 @@ HBondEnergy::eval_residue_pair_derivatives(
 		bool exclude_scb( ! hb_pair_dat.res2_data().bb_don_avail() );
 		/// case B: bb is acceptor, sc is donor && res1 is the acceptor residue -> look at the acceptor availability of residue 1
 		bool exclude_bsc( ! hb_pair_dat.res1_data().bb_acc_avail() );
-
-		hbond_derivs_1way( weights, hbondset, database_, pose, rsd2, rsd1, rsd2nneighbs, rsd1nneighbs, exclude_bsc, exclude_scb, ssdep_weight_factor, r2_atom_derivs, r1_atom_derivs, bond_near_wat );
+		//mbedit: changing weights here to weights_ij
+		hbond_derivs_1way( weights_ij, hbondset, database_, pose, rsd2, rsd1, rsd2nneighbs, rsd1nneighbs, exclude_bsc, exclude_scb, ssdep_weight_factor, r2_atom_derivs, r1_atom_derivs, bond_near_wat );
 	}
+	//mbedit 1 liner:
+	// TR << "hb eval_residue_pair_derivatives fxn ending" << std::endl;
 }
 
 void
@@ -1240,6 +1393,7 @@ HBondEnergy::finalize_total_energy(
 	Real original_sr_bb_sc = totals[ hbond_sr_bb_sc ];
 	Real original_lr_bb_sc = totals[ hbond_lr_bb_sc ];
 	Real original_sc       = totals[ hbond_sc ];
+	// TR << "in finalize energy, original_sc: " << original_sc << std::endl;
 	Real original_wat      = totals[ hbond_wat ]; // hydrate/SPaDES scoring function
 	Real original_ent      = totals[ wat_entropy ]; // hydrate/SPaDES scoring function
 	Real original_intra    = totals[ hbond_intra ];
@@ -1252,6 +1406,7 @@ HBondEnergy::finalize_total_energy(
 	totals[ hbond_sr_bb_sc ] = original_sr_bb_sc;
 	totals[ hbond_lr_bb_sc ] = original_lr_bb_sc;
 	totals[ hbond_sc ]       = original_sc;
+	// TR << "in finalize energy, after get_hbond_energies, original_sc: " << original_sc << std::endl;
 	totals[ hbond_wat ]      = original_wat; // hydrate/SPaDES scoring function
 	totals[ wat_entropy ]    = original_ent; // hydrate/SPaDES scoring function
 	totals[ hbond_intra ]    = original_intra;

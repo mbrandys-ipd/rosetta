@@ -29,6 +29,8 @@
 #include <core/conformation/symmetry/SymmetryInfo.hh>
 #include <core/pose/Pose.hh>
 #include <core/pose/symmetry/util.hh>
+//mbedit: one line
+#include <core/scoring/DerivVectorPair.hh>
 
 // Numeric headers
 
@@ -37,7 +39,7 @@
 
 // C++ headers
 #include <iostream>
-
+#include <string>
 #include <utility/vector1.hh>
 
 #include <core/scoring/methods/LongRangeTwoBodyEnergy.hh> // AUTO IWYU For LongRangeTwoBodyEnergy
@@ -950,6 +952,29 @@ eval_atom_derivatives_for_minnode(
 			iter_end = min_node.active_1benmeths_end(); iter != iter_end; ++iter ) {
 		(*iter)->eval_residue_derivatives(
 			rsd, min_node.res_min_data(), pose, res_weights, atom_derivs );
+			// //mbedit - checking for abnormally large values
+			// for ( Size ii = 1; ii <= rsd.natoms(); ++ii ) {
+			// 	// float f1_sum = (atom_derivs[ii].f1()[1]) * (atom_derivs[ii].f1()[1]) + (atom_derivs[ii].f1()[2]) * (atom_derivs[ii].f1()[2]) + (atom_derivs[ii].f1()[3]) * (atom_derivs[ii].f1()[3]);
+			// 	// float f1_mag = sqrt(f1_sum);
+			// 	// float f2_sum = (atom_derivs[ii].f2()[1]) * (atom_derivs[ii].f2()[1]) + (atom_derivs[ii].f2()[2]) * (atom_derivs[ii].f2()[2]) + (atom_derivs[ii].f2()[3]) * (atom_derivs[ii].f2()[3]);
+			// 	// float f2_mag = sqrt(f2_sum);
+			// 	// if (f2_mag > 5) {
+			// 	// 	std::cout << "mbedit loop1 f2:" << f2_mag << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+			// 	// }
+			// 	// std::cout << "mbedit eval_atom_derivatives_for_minnode scoreterm:" << (*iter)->score_types()[1] << std::endl; 
+
+			// 	for ( Size jj = 1; jj <= (*iter)->score_types().size(); ++jj ) {
+			// 		std::cout << "mbedit eval_atom_derivatives_for_minnode jj:" << jj << ":scoreterm:" << (*iter)->score_types()[jj] << std::endl;
+			// 	}
+			// 	// // here is where we check for large values, notes documented in OneNote 2-16-24 (deriv debugging)
+			// 	// if ( (f1_mag != 0) && (f2_mag !=0) ) {
+			// 	// 	if ( (f1_mag > 180) || (f2_mag > 4) ) {
+			// 	// 		std::cout << "mbedit_f1_mag1:" << f1_mag << ":f2_mag1:" << f2_mag << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+			// 	// 	}
+			// 	// }
+				
+			// }
+			// //mbedit end
 	}
 	/// 1b 2body intraresidue contributions
 	for ( auto
@@ -957,9 +982,30 @@ eval_atom_derivatives_for_minnode(
 			iter_end = min_node.active_intrares2benmeths_end(); iter != iter_end; ++iter ) {
 		(*iter)->eval_intrares_derivatives(
 			rsd, min_node.res_min_data(), pose, res_weights, atom_derivs );
-	}
+			// //mbedit - checking for abnormally large values
+			// for ( Size ii = 1; ii <= rsd.natoms(); ++ii ) {
+			// 	// float f1_sum = (atom_derivs[ii].f1()[1]) * (atom_derivs[ii].f1()[1]) + (atom_derivs[ii].f1()[2]) * (atom_derivs[ii].f1()[2]) + (atom_derivs[ii].f1()[3]) * (atom_derivs[ii].f1()[3]);
+			// 	// float f1_mag = sqrt(f1_sum);
+			// 	// float f2_sum = (atom_derivs[ii].f2()[1]) * (atom_derivs[ii].f2()[1]) + (atom_derivs[ii].f2()[2]) * (atom_derivs[ii].f2()[2]) + (atom_derivs[ii].f2()[3]) * (atom_derivs[ii].f2()[3]);
+			// 	// float f2_mag = sqrt(f2_sum);
+			// 	// if (f2_mag > 25) {
+			// 	// 	std::cout << "mbedit loop2 f2:" << f2_mag << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+			//fyi: doing (*iter)->score_types()[1] is printing the class and the first index of that class, so that when i kept
+			//seeing fa_atr in the print statements i was really also seeing fa_rep; therefore if i wanted to i could print from i = 1 to i = score_types().size() and print score_types()[i]
 
+			// 	// }
+			// 	std::cout << "mbedit eval_atom_derivatives_for_minnode 2 scoreterm:" << (*iter)->score_types()[1] << std::endl; 
+			// 	// // here is where we check for large values, notes documented in OneNote 2-16-24 (deriv debugging)
+			// 	// if ( (f1_mag != 0) && (f2_mag !=0) ) {
+			// 	// 	if ( (f1_mag > 2000) || (f2_mag > 40) ) {
+			// 	// 		std::cout << "mbedit_f1_mag2:" << f1_mag << ":f2_mag2:" << f2_mag << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+			// 	// 	}
+			// 	}
+			// //mbedit end
+	
+	}
 }
+
 
 void
 eval_res_onebody_energies_for_minnode(
@@ -1016,6 +1062,7 @@ eval_atom_derivatives_for_minedge(
 		(*iter)->eval_residue_pair_derivatives(
 			res1, res2, res1_min_data, res2_min_data, min_edge.res_pair_min_data(),
 			pose, respair_weights, r1atom_derivs, r2atom_derivs );
+			//mb note: 2-1-24, this fxn is never called during MD sim; see OneNote for more information (deriv debug notes)
 	}
 }
 
@@ -1031,6 +1078,7 @@ eval_weighted_atom_derivatives_for_minedge(
 	utility::vector1< DerivVectorPair > & r1atom_derivs,
 	utility::vector1< DerivVectorPair > & r2atom_derivs
 ) {
+	
 	//fpd rather then change eval_residue_pair_derivatives interface
 	//    we will just modify the energymap
 	EnergyMap respair_weight_new = respair_weights;
@@ -1043,6 +1091,40 @@ eval_weighted_atom_derivatives_for_minedge(
 		(*iter)->eval_residue_pair_derivatives(
 			res1, res2, res1_min_data, res2_min_data, min_edge.res_pair_min_data(),
 			pose, respair_weight_new, r1atom_derivs, r2atom_derivs );
+		//mbedit
+		//f2 for residue 1 atom derivative
+		// for ( Size ii = 1; ii <= res1.natoms(); ++ii ) {
+			
+		// 	// float f2_sum1 = (r1atom_derivs[ii].f2()[1]) * (r1atom_derivs[ii].f2()[1]) + (r1atom_derivs[ii].f2()[2]) * (r1atom_derivs[ii].f2()[2]) + (r1atom_derivs[ii].f2()[3]) * (r1atom_derivs[ii].f2()[3]);
+		// 	// float f2_mag1 = sqrt(f2_sum1);
+			
+		// 	// if (f2_mag1 > 700) {
+		// 	// 	std::cout << "mbedit loop3 res1 f2_mag:" << f2_mag1 << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+		// 	// }
+		// 	// std::cout << "mbedit eval_weighted_atom_derivatives_for_minedge res1 scoreterm:" << (*iter)->score_types()[1] << std::endl; 
+		// 	for ( Size jj = 1; jj <= (*iter)->score_types().size(); ++jj ) {
+		// 		// std::string martest_var1 (std::to_string((*iter)->score_types()[jj]));
+		// 		// std::cout << "mbedit eval_weighted_atom_derivatives_for_minedge res1 ii/jj:" << ii << "/" << jj << ":martest_var1:" << martest_var1 << std::endl;
+		// 		std::cout << "mbedit eval_weighted_atom_derivatives_for_minedge res1 ii/jj:" << ii << "/" << jj << ":scoreterm:" << (*iter)->score_types()[jj] << std::endl;
+				
+		// 	}
+		// }
+		// //f2 for residue 2 atom derivative
+		// for ( Size kk = 1; kk <= res2.natoms(); ++kk ) {
+			
+		// 	// float f2_sum2 = (r2atom_derivs[jj].f2()[1]) * (r2atom_derivs[jj].f2()[1]) + (r2atom_derivs[jj].f2()[2]) * (r2atom_derivs[jj].f2()[2]) + (r2atom_derivs[jj].f2()[3]) * (r2atom_derivs[jj].f2()[3]);
+		// 	// float f2_mag2 = sqrt(f2_sum2);
+
+		// 	// if (f2_mag2 > 40) {
+		// 	// 	std::cout << "mbedit loop3 res2 f2_mag:" << f2_mag2 << ":scoreterm:" << (*iter)->score_types()[1] << std::endl;
+		// 	// }
+		// 	// std::cout << "mbedit eval_weighted_atom_derivatives_for_minedge res2 scoreterm:" << (*iter)->score_types()[1] << std::endl; 
+		// 	for ( Size ll = 1; ll <= (*iter)->score_types().size(); ++ll ) {
+		// 			std::cout << "mbedit eval_weighted_atom_derivatives_for_minedge res2 ll:" << ll << ":scoreterm:" << (*iter)->score_types()[ll] << std::endl;
+		// 	}
+		// }
+		// //mbedit end
+		
 	}
 }
 
@@ -1084,11 +1166,19 @@ eval_dof_deriv_for_minnode(
 	Real deriv( 0 );
 	/// 1. eval 1 body derivatives
 	/// 1a 1body energy methods
+	// std::cout << "mbedit eval_dof_deriv_for_minnode called" << std::endl; //mbedit 1 liner //does get called
 	for ( auto
 			iter = min_node.dof_deriv_1benmeths_begin(),
 			iter_end = min_node.dof_deriv_1benmeths_end(); iter != iter_end; ++iter ) {
 		deriv += (*iter)->eval_residue_dof_derivative(
 			rsd, min_node.res_min_data(), dof_id, torsion_id, pose, sfxn, weights );
+			// //mbedit f2 check
+			// for ( Size ii = 1; ii <= rsd.natoms(); ++ii ) {
+			// 	std::cout << "mbedit eval_dof_deriv_for_minnode loop1 scoreterm:" << (*iter)->score_types()[1] << std::endl;
+
+			// }
+			// //mbedit end
+			
 	}
 
 	for ( auto
@@ -1096,6 +1186,12 @@ eval_dof_deriv_for_minnode(
 			iter_end = min_node.dof_deriv_2benmeths_end(); iter != iter_end; ++iter ) {
 		deriv += (*iter)->eval_intraresidue_dof_derivative(
 			rsd, min_node.res_min_data(), dof_id, torsion_id, pose, sfxn, weights );
+			// //mbedit f2 check
+			// for ( Size ii = 1; ii <= rsd.natoms(); ++ii ) {
+			// 	std::cout << "mbedit eval_dof_deriv_for_minnode loop2 scoreterm:" << (*iter)->score_types()[1] << std::endl;
+
+			// }
+			// //mbedit end
 	}
 	return deriv;
 }
@@ -1187,6 +1283,7 @@ eval_weighted_dof_deriv_for_minnode(
 	Real deriv( 0 );
 	/// 1. eval 1 body derivatives
 	/// 1a 1body energy methods
+	// std::cout << "mbedit eval_weighted_dof_deriv_for_minnode called" << std::endl; //mbedit 1 liner // doesnt get called
 	for ( auto
 			iter = min_node.dof_deriv_1benmeths_begin(),
 			iter_end = min_node.dof_deriv_1benmeths_end(); iter != iter_end; ++iter ) {

@@ -94,7 +94,7 @@ Etable::Etable(
 	max_dis2_                  ( max_dis_*max_dis_ ),
 	etable_disbins_            ( static_cast< int >( max_dis2_ * bins_per_A2_)+1),
 	lj_hbond_OH_donor_dis_     ( options.lj_hbond_OH_donor_dis ),
-	lj_hbond_dis_              ( 3.0 ),
+	lj_hbond_dis_              ( options.lj_hbond_dis ),
 
 	// hard-coded for now
 	lj_use_lj_deriv_slope_     ( true ),
@@ -401,7 +401,6 @@ Etable::make_pairenergy_table()
 					Real atrE,d_atrE,repE,d_repE,solvE1,solvE2,dsolvE1,dsolvE2;
 					calc_etable_value(dis2,atype1,atype2,atrE,d_atrE,repE,d_repE,solvE1,
 						solvE2,dsolvE1,dsolvE2 );
-
 					ljatr(  disbin) = atrE;
 					dljatr( disbin) = d_atrE;
 					ljrep(  disbin) = repE;
@@ -410,6 +409,7 @@ Etable::make_pairenergy_table()
 					fasol2( disbin) = solvE2;
 					dfasol( disbin) = dsolvE1 + dsolvE2;
 					dfasol1(disbin) = dsolvE1;
+					
 				}
 			}
 			// save these parameters for the analytic evaluation of the etable energy
@@ -1360,12 +1360,13 @@ Etable::precalc_etable_coefficients(
 			// pb acceptor. Combinations of these corrections allow better prediction of both
 			// pb hydroxyl O donor/charged O acceptor and charged NH donor/charged O acceptor
 			// pb distances.
-
+			
 			if ( lj_use_hbond_radii_ ) {
 				if ( ( atom_type(i).is_acceptor() && atom_type(j).is_donor() ) ||
 						( atom_type(i).is_donor() && atom_type(j).is_acceptor() ) ) {
 					// fpd this is bad ... can this be a property instead?
 					// apl -- yep, it sure is
+					//mb: this part is where lj_hbond_OH_donor_dis_ gets used
 					if (
 							( atom_type(j).is_donor() && atom_type(j).name().substr(0,2) == "OH" ) ||
 							( atom_type(i).is_donor() && atom_type(i).name().substr(0,2) == "OH" ) ||
@@ -1375,16 +1376,102 @@ Etable::precalc_etable_coefficients(
 							( atom_type(i).is_donor() && atom_type(i).name() == "Oet3" ) ) {
 						sigma = lj_hbond_OH_donor_dis_;
 					} else {
-						sigma = lj_hbond_dis_;
+						
+						//mb: this is where lj_hbond_dis_ is used
+						//mb:if atom_type = generictype, then use lj flags otherwise use default values (for proteins)
+						//mb: which for lj_hbond_dis its 3.0
+						if (	
+								//all generic acceptor/donor types as of 9/11/23
+								( atom_type(j).name() == "Nad" ) ||
+								( atom_type(i).name() == "Nad" ) ||
+								( atom_type(j).name() == "Nam" ) ||
+								( atom_type(i).name() == "Nam" ) ||
+								( atom_type(j).name() == "Nam2" ) ||
+								( atom_type(i).name() == "Nam2" ) ||
+								( atom_type(j).name() == "Ngu1" ) ||
+								( atom_type(i).name() == "Ngu1" ) ||
+								( atom_type(j).name() == "Ngu2" ) ||
+								( atom_type(i).name() == "Ngu2" ) ||
+								( atom_type(j).name() == "Nim" ) ||
+								( atom_type(i).name() == "Nim" ) ||
+								( atom_type(j).name() == "Nin" ) ||
+								( atom_type(i).name() == "Nin" ) ||
+								( atom_type(j).name() == "NG21" ) ||
+								( atom_type(i).name() == "NG21" ) ||
+								( atom_type(j).name() == "NG22" ) ||
+								( atom_type(i).name() == "NG22" ) ||
+								( atom_type(j).name() == "Oad" ) ||
+								( atom_type(i).name() == "Oad" ) ||
+								( atom_type(j).name() == "Oal" ) ||
+								( atom_type(i).name() == "Oal" ) ||
+								( atom_type(j).name() == "Oat" ) ||
+								( atom_type(i).name() == "Oat" ) ||
+								( atom_type(j).name() == "Ohx" ) ||
+								( atom_type(i).name() == "Ohx" ) ||
+								( atom_type(j).name() == "OG2" ) ||
+								( atom_type(i).name() == "OG2" ) ||
+								( atom_type(j).name() == "OG3" ) ||
+								( atom_type(i).name() == "OG3" ) ||
+								( atom_type(j).name() == "OG31" ) ||
+								( atom_type(i).name() == "OG31" ) ) {
+							sigma = lj_hbond_dis_;
+							//TR << "maredit triggered for ljhbonddis, here's atom type for i:" << atom_type(i).name() << std::endl;
+							//TR << "maredit triggered for ljhbonddis, here's atom type for j:" << atom_type(j).name() << std::endl;
+							//TR << "maredit triggered for ljhbonddis, here's sigma:" << sigma << std::endl;
+						} else {
+							//this is where I hope nongeneric acc-nongeneric donor pairs end up
+							sigma = 3.0;
+							//TR << "maredit triggered for 3.0_ljhbonddis, here's atom type for i:" << atom_type(i).name() << std::endl;
+							//TR << "maredit triggered for 3.0_ljhbonddis, here's atom type for j:" << atom_type(j).name() << std::endl;
+							//TR << "maredit triggered for 3.0_ljhbonddis, here's sigma:" << sigma << std::endl;
+						}
 						//           if (tight_hb && ((i == 15 && j == 13) || (j == 15  && i == 13)))
 						//       sigma = lj_hbond_accOch_dis;
 					}
 				} else if ( ( atom_type(i).is_acceptor() && atom_type(j).is_polar_hydrogen() ) ||
 						( atom_type(i).is_polar_hydrogen() && atom_type(j).is_acceptor() ) ) {
-					sigma = lj_hbond_hdis_;
+					//mb: this is where lj_hbond_hdis_ is used
+					//mb:if atom_type = generictype, then use lj flags otherwise use default values
+					//mb: which for lj_hbond_hdis its 1.75
+					if (
+							//generic acceptor atom names:
+							( atom_type(j).name() == "Nim" ) ||
+							( atom_type(i).name() == "Nim" ) ||
+							( atom_type(j).name() == "Oad" ) ||
+							( atom_type(i).name() == "Oad" ) ||
+							( atom_type(j).name() == "Oal" ) ||
+							( atom_type(i).name() == "Oal" ) ||
+							( atom_type(j).name() == "Oat" ) ||
+							( atom_type(i).name() == "Oat" ) ||
+							( atom_type(j).name() == "OG2" ) ||
+							( atom_type(i).name() == "OG2" ) ||
+							( atom_type(j).name() == "OG3" ) ||
+							( atom_type(i).name() == "OG3" ) ||
+							( atom_type(j).name() == "OG31" ) ||
+							( atom_type(i).name() == "OG31" ) ||
+							//generic polar h atom names:
+							( atom_type(j).name() == "HO" ) ||
+							( atom_type(i).name() == "HO" ) ||
+							( atom_type(j).name() == "HN" ) ||
+							( atom_type(i).name() == "HN" ) ) {
+							
+						sigma = lj_hbond_hdis_;
+						//TR << "maredit triggered for ljhbondHdis, here's atom type for i:" << atom_type(i).name() << std::endl;
+						//TR << "maredit triggered for ljhbondHdis, here's atom type for j:" << atom_type(j).name() << std::endl;
+						//TR << "maredit triggered for ljhbondHdis, here's sigma:" << sigma << std::endl;
+					} else {
+						//mb: default value here for anything i didnt list above (nongen acc to nongen h atom)
+						sigma = 1.75;
+						//TR << "maredit triggered for 1.75_ljhbondHdis, here's atom type for i:" << atom_type(i).name() << std::endl;
+						//TR << "maredit triggered for 1.75_ljhbondHdis, here's atom type for j:" << atom_type(j).name() << std::endl;
+						//TR << "maredit triggered for 1.75_ljhbondHdis, here's sigma:" << sigma << std::endl;
+					}
+				
 				} else if ( ( atom_type(i).is_acceptor() && atom_type(j).name() == "MG2p" ) ||
 						( atom_type(i).name() == "MG2p" && atom_type(j).is_acceptor() ) ) {
-					sigma = lj_hbond_hdis_;
+					//mb: this was originally set to the flag but for my work im making it default:
+					//sigma = lj_hbond_hdis_;
+					sigma = 1.75;
 					//           if (tight_hb && ((i == 15 && j == 22) || (j == 15 && i == 22)))
 					//       sigma = lj_hbond_accOch_hdis;
 				}

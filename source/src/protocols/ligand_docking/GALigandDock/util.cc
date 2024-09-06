@@ -132,6 +132,7 @@ get_atomic_contacting_sidechains(
 	core::Real const atomic_distance_cut
 ) {
 	utility::vector1< core::Size > contact_scs;
+	if ( atomic_distance_cut <= 0.0 ) return contact_scs;
 	core::Real const D2_COARSE( 225.0 );
 	core::Real const D2_FINE( atomic_distance_cut*atomic_distance_cut );
 
@@ -301,6 +302,68 @@ make_ligand_only_pose(
 
 	retval = core::pose::getPoseExtraScore( *pose, "n_hbonds_max1", n_hbonds_max1);
 	if ( retval ) core::pose::setPoseExtraScore( *pose_new, "n_hbonds_max1", n_hbonds_max1 );
+
+}
+
+void
+make_minipose(
+	core::pose::PoseOP minipose,
+	core::pose::PoseCOP fullpose,
+	utility::vector1< core::Size > const& lig_resnos,
+	utility::vector1< core::Size > const& movable_scs
+) {
+	minipose->clear();
+
+	// movable sidechains
+	for ( core::Size i=1; i<=movable_scs.size(); ++i ) {
+		if ( i == 1 ||  (movable_scs[i-1] == movable_scs[i]-1 && !fullpose->residue( movable_scs[i-1] ).is_upper_terminus() ) ) {
+			minipose->append_residue_by_bond( fullpose->residue( movable_scs[i] ) );
+		} else {
+			minipose->append_residue_by_jump( fullpose->residue( movable_scs[i] ), minipose->total_residue() );
+		}
+	}
+
+	// ligand
+	for ( core::Size i=1; i<=lig_resnos.size(); ++i ) {
+		if ( i==1 ) {
+			minipose->append_residue_by_jump( fullpose->residue( lig_resnos[i] ), minipose->total_residue() );
+		} else {
+			minipose->append_residue_by_bond( fullpose->residue( lig_resnos[i] ) );
+		}
+	}
+
+	core::Real dH, TdS, dG, buns, n_hbonds_total, n_hbonds_max1;
+	std::string ligandname;
+	core::Real rms, complexscore, ligscore, recscore, ranking_prerelax;
+	bool retval;
+	core::pose::getPoseExtraScore( *fullpose, "dH", dH);
+	core::pose::getPoseExtraScore( *fullpose, "-TdS", TdS);
+	core::pose::getPoseExtraScore( *fullpose, "dG", dG);
+	core::pose::getPoseExtraScore( *fullpose, "lig_rms", rms);
+	core::pose::getPoseExtraScore( *fullpose, "ligscore", ligscore);
+	core::pose::getPoseExtraScore( *fullpose, "recscore", recscore);
+	core::pose::getPoseExtraScore( *fullpose, "complexscore", complexscore );
+	core::pose::getPoseExtraScore( *fullpose, "ranking_prerelax", ranking_prerelax);
+	core::pose::getPoseExtraScore( *fullpose, "ligandname", ligandname);
+
+	core::pose::setPoseExtraScore( *minipose, "-TdS", TdS );
+	core::pose::setPoseExtraScore( *minipose, "dG", dG );
+	core::pose::setPoseExtraScore( *minipose, "dH", dH );
+	core::pose::setPoseExtraScore( *minipose, "lig_rms", rms);
+	core::pose::setPoseExtraScore( *minipose, "ligscore", ligscore );
+	core::pose::setPoseExtraScore( *minipose, "recscore", recscore );
+	core::pose::setPoseExtraScore( *minipose, "complexscore", complexscore );
+	core::pose::setPoseExtraScore( *minipose, "ranking_prerelax", ranking_prerelax );
+	core::pose::setPoseExtraScore( *minipose, "ligandname", ligandname);
+
+	retval = core::pose::getPoseExtraScore( *fullpose, "buns", buns);
+	if ( retval ) core::pose::setPoseExtraScore( *minipose, "buns", buns );
+
+	retval = core::pose::getPoseExtraScore( *fullpose, "n_hbonds_total", n_hbonds_total);
+	if ( retval ) core::pose::setPoseExtraScore( *minipose, "n_hbonds_total", n_hbonds_total );
+
+	retval = core::pose::getPoseExtraScore( *fullpose, "n_hbonds_max1", n_hbonds_max1);
+	if ( retval ) core::pose::setPoseExtraScore( *minipose, "n_hbonds_max1", n_hbonds_max1 );
 
 }
 
@@ -554,6 +617,18 @@ compute_nhbonds(core::pose::Pose const& pose,
 			}
 		}
 	}
+}
+void
+dump_ligand_conformers(
+	LigandConformers const& conformers,
+	std::string const& extra)
+{
+	core::pose::PoseOP pose(new core::pose::Pose);
+	for ( core::Size i=1; i<=conformers.size(); ++i ) {
+		std::string fname = extra + "_" + std::to_string(i) + ".pdb";
+		conformers[i].dump_pose(fname);
+	}
+
 }
 
 } // ga_dock

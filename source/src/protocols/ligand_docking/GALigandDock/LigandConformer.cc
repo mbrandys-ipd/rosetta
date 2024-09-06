@@ -121,6 +121,10 @@ LigandConformer::initialize(
 		ligand_typenames_.push_back( pose->residue_type(ligid).name() );
 	}
 	update_conf( pose );
+	ligandchis_fixed_.resize( ligandchis_.size(), false );
+	for ( core::Size i=1; i<=ligandchis_.size(); ++i ) {
+		free_ligandchi_ndx_.push_back(i);
+	}
 
 	// get ligand chi dependence for alternative crossover
 	core::conformation::Residue ligand( pose->residue( ligids[1] ) );
@@ -818,6 +822,7 @@ mutate(LigandConformer const &l ) {
 		core::Size nligchi = l.ligandchis_.size();
 		core::Size ntors_changed(0);
 		for ( core::Size j=1; j<=nligchi; ++j ) {
+			if ( l.is_ligand_chi_fixed(j) ) continue;
 			if ( numeric::random::rg().uniform() < l.torsmutationRate_ ) {
 				core::Real angle_j;
 				if ( l.ligchimutWidth_ > 180.0 ) { // complete randomization
@@ -833,8 +838,9 @@ mutate(LigandConformer const &l ) {
 		}
 
 		// make sure at least one torsion is mutated
-		if ( ntors_changed == 0 && !randomize_rt && nligchi > 0 ) {
-			core::Size j( numeric::random::rg().random_range(1,nligchi) );
+		if ( ntors_changed == 0 && !randomize_rt && nligchi > 0 && l.free_ligandchi_ndx_.size() > 0 ) {
+			core::Size ndx( numeric::random::rg().random_range(1, l.free_ligandchi_ndx_.size()) );
+			core::Size j = l.free_ligandchi_ndx_[ndx];
 			core::Real angle_j;
 			if ( l.ligchimutWidth_ > 180.0 ) { // complete randomization
 				angle_j = 360.0 * numeric::random::rg().uniform();

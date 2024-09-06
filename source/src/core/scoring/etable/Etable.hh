@@ -645,6 +645,7 @@ public:
 	Real get_lj_hbond_OH_donor_dis() const { return lj_hbond_OH_donor_dis_; }
 	Real get_lj_hbond_hdis() const { return lj_hbond_hdis_; }
 	Real get_lj_hbond_dis() const { return lj_hbond_dis_; }
+	Real get_lj_switch_dis2sigma() const { return lj_switch_dis2sigma_; }
 
 private:
 
