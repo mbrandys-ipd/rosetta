@@ -667,6 +667,9 @@ sources = {
 		#"per_residue_solvent_exposure",
 		"score_test",
 	],
+	"pilot/mbrandys" : [
+		"md_init_pose"
+	],
 	"pilot/mdsmith" : [
 		#"ligand_motifs",
 		#"motif_ligand_packer_design",

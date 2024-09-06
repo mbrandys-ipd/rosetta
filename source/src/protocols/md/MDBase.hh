@@ -77,6 +77,7 @@ public:
 	core::Real mass( core::Size iatm ) const { return mass_[iatm]; }
 	core::Real cummulative_time() const { return cummulative_time_; }
 	core::Size nstep() const { return nstep_; }
+	core::Size report_step() const { return report_step_; }
 	core::Real temp0() const { return temp0_; }
 
 	core::kinematics::MoveMapOP movemap() const { return movemap_; }
@@ -88,8 +89,8 @@ public:
 	core::Real Emin_obj() const { return Emin_obj_; }
 	core::Real time_minobj() const { return time_minobj_; }
 
-	core::Size md_report_stepsize() const { return md_report_stepsize_; }
-	core::Size md_energy_report_stepsize() const { return md_energy_report_stepsize_; }
+	// core::Size md_report_stepsize() const { return md_report_stepsize_; }
+	// core::Size md_energy_report_stepsize() const { return md_energy_report_stepsize_; }
 	core::Size md_rsr_update_stepsize() const { return md_rsr_update_stepsize_; }
 	core::pose::Pose pose0() const { return pose0_; }
 	core::Size context_update_step() const { return context_update_step_; }
@@ -135,6 +136,7 @@ public:
 	void set_cummulative_time( core::Real setting ) { cummulative_time_ = setting; }
 	void set_temp0( core::Real setting ) { temp0_ = setting; }
 	void set_nstep( core::Size setting ) { nstep_ = setting; }
+	void set_report_step( core::Size setting ) { report_step_ = setting; }
 
 	void set_scorefxn( core::scoring::ScoreFunctionCOP setting ) { scorefxn_ = setting->clone(); }
 	void set_scorefxn_obj( core::scoring::ScoreFunctionCOP setting ) { scorefxn_obj_ = setting->clone(); }
@@ -242,6 +244,7 @@ private:
 	// Assigned variables
 	core::Real temp0_;
 	core::Size nstep_;
+	core::Size report_step_;
 
 	// Dynamic variables
 	core::Real temperature_;

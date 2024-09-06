@@ -87,6 +87,10 @@
 #include <core/scoring/electron_density/ElectronDensity.hh>
 
 #include <ctime>
+
+#include <iostream> //mb edit
+#include <chrono> //mb edit
+
 #include <fstream>
 
 #include <core/kinematics/Jump.hh> // AUTO IWYU For Jump
@@ -196,6 +200,8 @@ GALigandDock::GALigandDock() {
 	template_pool_ = "";
 	reference_pool_ = "";
 	n_template_ = 20;
+	mcs_align_mode_ = "default";
+	use_aligner_in_docking_ = false;
 
 	is_virtual_root_ = false;
 
@@ -210,6 +216,10 @@ GALigandDock::GALigandDock() {
 	top_pose_metric_ = "score";
 	debug_report_ = false;
 	output_ligand_only_ = false;
+	output_minipose_ = false;
+
+	optH_only_rotamer_ = false;
+	force_nreport_=false;
 }
 
 void
@@ -530,6 +540,7 @@ GALigandDock::apply( pose::Pose & pose )
 	}
 
 	if ( multiple_ligands_.size() > 0 ) {
+		std::cout << "mb debug, multiple ligs size > 0 tree activated." << std::endl; //mb edit
 		core::pose::Pose pose_init(pose); //copy the initial pose
 		core::chemical::ResidueTypeSetCOP residue_set( core::chemical::ChemicalManager::get_instance()
 			->residue_type_set( "fa_standard" ) );
@@ -561,16 +572,15 @@ GALigandDock::apply( pose::Pose & pose )
 				premin_ligand( *pose_working, lig_resids );
 				if ( TR.Debug.visible() ) pose_working->dump_pdb("pose.premin."+std::to_string(ilig)+".pdb");
 			}
-
 			LigandConformer gene_initial( pose_working, lig_resids, movable_scs, freeze_ligand_backbone_, freeze_ligand_ );
+			
 			gene_initial.set_sample_ring_conformers( sample_ring_conformers_ );
 			gene_initial.set_has_density_map( has_density_map_ );
 
 			OutputStructureStore temporary_outputs;
-
+			
 			// take lowest score pose from each ligand
 			pose = run_docking( gene_initial, gridscore, aligner, temporary_outputs );
-
 			// store to remaining outputs
 			core::Real score, rms, ligscore, recscore, complexscore, lig_dens, hbond_ratio, hbond_count;
 
@@ -595,6 +605,14 @@ GALigandDock::apply( pose::Pose & pose )
 			auto end = std::chrono::steady_clock::now();
 			std::chrono::duration<double> diff = end-start;
 			TR << "GALigand Dock took " << (diff).count() << " seconds." << std::endl;
+			if ( force_nreport_ && multiple_ligands_.size() == 1 ) {
+				for (core::Size i=1; i<=nreport_; ++i){
+					core::Size ranking_prerelax(0);
+					core::pose::PoseOP pose_out_temp(new core::pose::Pose);
+					temporary_outputs.pop( *pose_out_temp, score, rms, complexscore, ligscore, recscore, ranking_prerelax, ligandname );
+					remaining_outputs_.push( *pose_out_temp, score, rms, complexscore, ligscore, recscore, ranking_prerelax, ligandname  );
+				}
+			}
 		}
 		if ( has_density_map_ ) {
 			pose = *remaining_outputs_.dens_pop();
@@ -605,6 +623,7 @@ GALigandDock::apply( pose::Pose & pose )
 
 
 	if ( ligand_file_list_.size() > 0 ) {
+		std::cout << "mb debug, ligand_file_list_.size() > 0 tree activated." << std::endl; //mb edit
 		core::pose::Pose pose_complex(pose); //copy the initial pose
 		core::Size struct_count(0);
 		for ( core::Size i=1; i<=ligand_file_list_.size(); ++i ) {
@@ -726,20 +745,36 @@ GALigandDock::apply( pose::Pose & pose )
 		pose = *remaining_outputs_.pop();
 	}
 
+
+
 	if ( multiple_ligands_.size()==0 && ligand_file_list_.size()==0 ) {
+		std::cout << "mb debug, multiple_ligands_.size()==0 && ligand_file_list_.size()==0 tree activated." << std::endl; //mb edit
 		auto start = std::chrono::steady_clock::now();
 		core::pose::PoseOP pose_working( new core::pose::Pose( pose ) );
 		pose_working->energies().clear();
 		pose_working->data().clear();
+		pose_working->dump_pdb("mb_pose_working_from_ga_apply_beforePreMinLig.pdb"); //mb edit
 		if ( premin_ligand_ ) {
 			TR << "Preminimize ligand." << std::endl;
 			premin_ligand( *pose_working, lig_resids );
 		}
 
+		std::cout << "mb debug, in GALigandDock::apply, gonna dump/print the items in: LigandConformer gene_initial( pose_working, lig_resids, movable_scs, freeze_ligand_backbone_, freeze_ligand_ ):" << std::endl; //mb edit
+		pose_working->dump_pdb("mb_pose_working_from_ga_apply_afterPreMinLig.pdb"); //mb edit
+		std::cout << "lig_resids: " << lig_resids << ":movable_scs:" << movable_scs << ":freeze_ligand_backbone_:" << freeze_ligand_backbone_ << ":freeze_ligand_:" << freeze_ligand_ << std::endl; //mb edit
+
 		LigandConformer gene_initial( pose_working, lig_resids, movable_scs, freeze_ligand_backbone_, freeze_ligand_ );
+
+		std::cout << "mb debug, in GALigandDock::apply, dumping gene_initial as pose_mbdebug.pdb to see how it compares to pose_working..." << std::endl; //mb edit
+		core::pose::PoseOP pose_mbdebug( new core::pose::Pose() ); //mb edit
+		gene_initial.to_pose( pose_mbdebug ); //mb edit
+		pose_mbdebug->dump_pdb( "pose_mbdebug.pdb" ); //mb edit
+
 		gene_initial.set_sample_ring_conformers( sample_ring_conformers_ );
 		gene_initial.set_has_density_map( has_density_map_);
+		std::cout << "mb debug, about to do run_docking..." << std::endl; //mb edit
 		pose = run_docking( gene_initial, gridscore, aligner, remaining_outputs_ );
+		std::cout << "mb debug, run_docking finished, (line776)" << std::endl; //mb edit
 		remaining_outputs_.resize(nreport_-1);
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> diff = end-start;
@@ -763,6 +798,10 @@ GALigandDock::run_docking( LigandConformer const &gene_initial,
 	// [[3]] main optimization cycle
 
 	GAOptimizerOP optimizer = get_optimizer( gene_initial, gridscore );
+	if ( use_aligner_in_docking_ ) {
+		MCSAligner mcs_aligner = get_mcs_aligner(gene_initial);
+		optimizer->set_aligner( mcs_aligner );
+	}
 	optimizer->run( genes );
 
 	// trim genes for final min & report
@@ -992,6 +1031,11 @@ GALigandDock::run_docking( LigandConformer const &gene_initial,
 
 	//compute the number of hydrogen bonds between the ligand and the hb_resids_
 	if ( hb_resids_.size() > 0 ) {
+		TR << "Computing number hydrogen bonds between ligand and residues: " << std::endl;
+		for ( core::Size resid : hb_resids_ ) {
+			core::conformation::Residue const& ires = pose->residue(resid);
+			TR << "Residue: " << resid << ", " << ires.name() << std::endl;
+		}
 		auto t0 = std::chrono::steady_clock::now();
 		core::Size n_hbonds_total(0);
 		core::Size n_hbonds_max1(0);
@@ -1021,10 +1065,16 @@ GALigandDock::run_docking( LigandConformer const &gene_initial,
 	}
 
 
-	if ( output_ligand_only_ && gene_initial.moving_scs().size() == 0 && final_optH_mode_ != OPTH_REDEFINE_SIDECHAINS ) { // make sure no sidechain changes
+	if ( output_ligand_only_ && gene_initial.moving_scs().size() == 0 && final_optH_mode_ != OPTH_REDEFINE_SIDECHAINS && !output_minipose_) { // make sure no sidechain changes
 		core::pose::PoseOP pose_ligand(new core::pose::Pose);
 		make_ligand_only_pose(pose_ligand, pose, gene_initial.ligand_ids());
 		return *pose_ligand;
+	}
+
+	if ( output_minipose_ ) {
+		core::pose::PoseOP pose_minipose(new core::pose::Pose);
+		make_minipose(pose_minipose, pose, gene_initial.ligand_ids(), gene_initial.moving_scs());
+		return *pose_minipose;
 	}
 
 	return *pose; // return lowest energy one
@@ -1043,8 +1093,27 @@ GALigandDock::eval_docked_pose_helper( core::pose::Pose &pose,
 	if ( TR.Debug.visible() ) TR.Debug << "Evaluating ligand: " << ligandname << std::endl;
 
 	if ( turnon_flexscs_at_relax_ ) {
-		if ( !pose_native_ ) movable_scs = get_atomic_contacting_sidechains( pose, lig_ids, contact_distance_ );
+		// if ( !pose_native_ ) movable_scs = get_atomic_contacting_sidechains( pose, lig_ids, contact_distance_ );
 		constraint_relax(pose, lig_ids, movable_scs, maxiter_);
+	}
+
+	core::Real rms = 0.0;
+	if ( pose_native_ ) {
+		if ( lig_ids.size() == 1 ) {
+			//fd  if the input ligand is the last residue, use the last residue of the _native_ as the ligand
+			//fd  otherwise, match residue IDs
+			core::Size lig_resno = lig_ids[1];
+			core::Size native_lig = lig_resno;
+			if ( lig_resno == pose.total_residue() ) {
+				native_lig = pose_native_->total_residue();
+			}
+			rms = core::scoring::automorphic_rmsd(
+				pose_native_->residue( native_lig ), pose.residue( lig_resno ), false );
+		} else {
+			rms = core::scoring::all_atom_rmsd_nosuper(
+				*pose_native_, pose, lig_ids, lig_ids );
+		}
+		core::pose::setPoseExtraScore( pose, "lig_rms", rms);
 	}
 
 	if ( estimate_buns_ ) {
@@ -1085,6 +1154,7 @@ GALigandDock::eval_docked_pose_helper( core::pose::Pose &pose,
 	core::pose::setPoseExtraScore( pose, "-TdS", TdS );
 	core::pose::setPoseExtraScore( pose, "dG", dG );
 	core::pose::setPoseExtraScore( pose, "ligandname", ligandname);
+	core::pose::setPoseExtraScore( pose, "complexscore", complex_score );
 
 
 	core::Size nchi = 0;
@@ -1285,7 +1355,22 @@ GALigandDock::get_movable_scs( core::pose::Pose const &pose,
 		}
 	}
 
-	return movable_scs;
+	utility::vector1< core::Size > movable_scs_final;
+	for ( core::Size res_i : movable_scs ) {
+		bool has_proton_chi = ( pose.residue(res_i).aa() == core::chemical::aa_ser || 
+								pose.residue(res_i).aa() == core::chemical::aa_thr ||
+								pose.residue(res_i).aa() == core::chemical::aa_cys || 
+								pose.residue(res_i).aa() == core::chemical::aa_tyr ||
+								pose.residue(res_i).aa() == core::chemical::aa_his);
+
+		if ( !optH_only_rotamer_ ) {
+			movable_scs_final.push_back( res_i );
+		} else if ( has_proton_chi ) {
+			movable_scs_final.push_back( res_i );
+		} 
+	}
+
+	return movable_scs_final;
 }
 
 void
@@ -2373,6 +2458,42 @@ GALigandDock::load_initial_pool(
 	}
 }
 
+MCSAligner
+GALigandDock::get_mcs_aligner(
+	LigandConformer const &gene_initial
+) const {
+	std::cout << "mb debug, get_mcs_aligner start." << std::endl; //mb edit
+	auto start = std::chrono::system_clock::now(); //mb edit
+	utility::vector1<std::string> input_pdbs = utility::string_split( template_pool_, ',' );
+	if ( input_pdbs.size() >1 ) {
+		utility_exit_with_message("Currently only accept one template structure.");
+	}
+	std::string tag = input_pdbs[1];
+	if ( (tag.length() < 3) || (tag.substr( tag.length()-3 )!="pdb") ) {
+		utility_exit_with_message("Currently only accept one pdb format.");
+	}
+
+	core::pose::PoseOP pose_template = core::import_pose::pose_from_file( tag, false, core::import_pose::PDB_file );
+    auto end = std::chrono::system_clock::now(); //mb edit
+    std::chrono::duration<double> elapsed_seconds = end-start; //mb edit
+	std::stringstream ss_mar; //mb edit
+	ss_mar << "get_mcs_aligner_mb_" << elapsed_seconds.count() << "_.pdb" ; //mb edit
+	std::cout << "mb debug, get_mcs_aligner, dumping pose_template: " << ss_mar.str() << std::endl; //mb edit
+	pose_template->dump_pdb(ss_mar.str()); //mb edit
+	MCSAlignerOptions aligner_options = MCSAlignerOptions();
+	aligner_options.perturb_rb = true;
+	aligner_options.perturb_torsion = true;
+	if ( mcs_align_mode_ == "strict" ) {
+		aligner_options.perturb_rb = false;
+		aligner_options.restype_to_rdmol_options.noImplicitHs = true;
+		aligner_options.restype_to_rdmol_options.skipHs = false;
+	}
+	// TR << "pose_template size: " << pose_template->size() << ", ligand_ids 1st: " << gene_initial.ligand_ids()[1] << std::endl; //mb edit, commented this out so i could print this below:
+	TR << "mb debug pose_template size: " << pose_template->size() << ", gene_initial.ligand_ids()[1]: " << gene_initial.ligand_ids()[1] << std::endl;
+	MCSAligner aligner( *pose_template, gene_initial.ligand_ids()[1], aligner_options );
+	return aligner;
+}
+
 // load the initital inputs specified by template_pool
 //   - reads all files ending in .pdb as PDBs
 //   - reads special tag input as the input pose
@@ -2398,35 +2519,46 @@ GALigandDock::load_template_pool(
 	get_ligand_resids(*pose_template, lig_resids);
 	template_cst_infos.push_back( ConstraintInfo(*pose_template, lig_resids, false, false ) );
 
-	MCSAlignerOptions aligner_options = MCSAlignerOptions();
-	aligner_options.perturb_rb = true;
-	aligner_options.perturb_torsion = true;
 	LigandConformer gene_aligned=gene_initial;
-	TR << "pose_template size: " << pose_template->size() << ", ligand_ids 1st: " << gene_initial.ligand_ids()[1] << std::endl;
-	MCSAligner aligner( *pose_template, gene_initial.ligand_ids()[1], aligner_options );
-	aligner.apply(gene_aligned);
-	genes_sel.push_back( gene_aligned );
-	utility::vector1<bool> const& torsion_in_align = aligner.torsion_in_align();
 	auto t0 = std::chrono::steady_clock::now();
-
-	for ( core::Size i = 1; i <= nsel -1 ; ++i ) {
-		LigandConformer gene=gene_aligned;
-		core::pose::PoseOP pose_aligned( new core::pose::Pose() );
-		gene.to_pose( pose_aligned );
-		gene.score( 0.0 );
-
-		perturb_ligand_rb( *pose_aligned, gene.ligand_ids(), 2.0, 15.0 );
-		perturb_ligand_torsions( *pose_aligned, gene.ligand_ids(), torsion_in_align, 15.0 );
-
-		gene.update_conf(pose_aligned);
-
-		if ( TR.Debug.visible() ) {
-			pose_template->dump_pdb("initial_template."+std::to_string(i)+".pdb");
+	std::cout << "mb debug, load_template_pool get_mcs_aligner is next line." << std::endl; //mb edit
+	MCSAligner aligner = get_mcs_aligner(gene_initial);
+	std::cout << "mb debug, load_template_pool aligner.apply() call after this line. the call is aligner.apply(gene_aligned, nsel), with gene_aligned=gene_intial and nsel is: " << nsel << std::endl; //mb edit
+	aligner.apply(gene_aligned, nsel);
+	genes_sel = aligner.get_aligned_conformers();
+	if ( TR.Debug.visible() ) {
+		int i=1;
+		for ( auto gene:genes_sel ) {
+			core::pose::PoseOP pose_aligned( new core::pose::Pose() );
+			gene.to_pose( pose_aligned );
+			gene.score( 0.0 );
 			pose_aligned->dump_pdb( "initial_template.gene_match_aligned."+std::to_string(i)+".pdb" );
+			++i;
 		}
-
-		genes_sel.push_back( gene );
 	}
+	// genes_sel.push_back( gene_aligned );
+	// utility::vector1<bool> const& torsion_in_align = aligner.torsion_in_align();
+	
+	// for ( core::Size i = 1; i <= nsel -1 ; ++i ) {
+	// 	LigandConformer gene=gene_aligned;
+	// 	core::pose::PoseOP pose_aligned( new core::pose::Pose() );
+	// 	gene.to_pose( pose_aligned );
+	// 	gene.score( 0.0 );
+
+	// 	if ( mcs_align_mode_ != "strict" ){
+	// 		perturb_ligand_rb( *pose_aligned, gene.ligand_ids(), 2.0, 15.0 );
+	// 		perturb_ligand_torsions( *pose_aligned, gene.ligand_ids(), torsion_in_align, 15.0 );
+	// 	}
+		
+	// 	gene.update_conf(pose_aligned);
+
+	// 	if ( TR.Debug.visible() ) {
+	// 		pose_template->dump_pdb("initial_template."+std::to_string(i)+".pdb");
+	// 		pose_aligned->dump_pdb( "initial_template.gene_match_aligned."+std::to_string(i)+".pdb" );
+	// 	}
+
+	// 	genes_sel.push_back( gene );
+	// }
 	auto t1= std::chrono::steady_clock::now();
 	TR << "Time for perturb aligned gene: " << std::chrono::duration<double>(t1-t0).count() << " seconds." << std::endl;
 }
@@ -2613,14 +2745,18 @@ GALigandDock::generate_perturbed_structures(
 	if ( template_pool_ != "" ) {
 		auto t0 = std::chrono::steady_clock::now();
 		utility::vector1< ConstraintInfo > template_cst_infos;
-		load_template_pool(gene_initial, genes_sel, n_template_, template_cst_infos);
+		core::Size n_template = n_template_;
+		if ( (int)n_template_ > nleft) {
+			n_template = nleft;
+		}
+		load_template_pool(gene_initial, genes_sel, n_template, template_cst_infos);
 		auto t1 = std::chrono::steady_clock::now();
 		std::chrono::duration<double> t_diff = t1-t0;
 		TR << "Finished generating initial template pool in " << t_diff.count() << " seconds." << std::endl;
 		bool use_pharmacophore_original = aligner.use_pharmacophore();
 		aligner.set_use_pharmacophore( false );
 		aligner.prealigned_input( true );
-		for ( core::Size i=nstruct_input+1; i<=nstruct_input+n_template_; ++i ) {
+		for ( core::Size i=nstruct_input+1; i<=nstruct_input+n_template; ++i ) {
 			if ( template_cst_infos.size() > 0 ) {
 				ConstraintInfo const & selected_ref =
 					template_cst_infos[ numeric::random::rg().random_range( 1, template_cst_infos.size() ) ];
@@ -2637,7 +2773,7 @@ GALigandDock::generate_perturbed_structures(
 		aligner.set_use_pharmacophore( use_pharmacophore_original );
 		aligner.prealigned_input( false );
 
-		nleft = (int)npool - (int)n_template_;
+		nleft -= (int)n_template;
 		if ( nleft <= 0 ) {
 			if ( reference_pool_ != "none" ) {
 				TR << "WARNING, initial_pool and template_pool filled up the pool. Reference pool provided but will not be used.  Increase pool size!" << std::endl;
@@ -2684,7 +2820,6 @@ GALigandDock::generate_perturbed_structures(
 		core::Size nrefgen_sampler(0);
 		nrefgen_sampler = (int)(nrefgen*torsion_sampler_percentage_);
 		nrefgen = nrefgen - nrefgen_sampler;
-
 		for ( core::Size i=1; i<=nrefgen; ++i ) {
 			LigandConformer gene( gene_initial );
 
@@ -2713,7 +2848,6 @@ GALigandDock::generate_perturbed_structures(
 			}
 			genes_ref.push_back( gene );
 		}
-
 		for ( core::Size i=1; i<=nrefgen_sampler; ++i ) {
 			LigandConformer gene( gene_initial );
 
@@ -2731,7 +2865,6 @@ GALigandDock::generate_perturbed_structures(
 			gene.score( score_soft );
 			genes_ref.push_back( gene );
 		}
-
 		TR << "Generate " << nrefgen_sampler << " structures using TorsionSampler for ligand aligner." << std::endl;
 
 		if ( nrefgen > 0 ) {
@@ -2897,6 +3030,7 @@ GALigandDock::parse_my_tag(
 	if ( tag->hasOption("optimize_input_H") ) { optimize_input_H_ = tag->getOption<bool>("optimize_input_H"); }
 	if ( tag->hasOption("pre_optH_relax") ) { pre_optH_relax_ = tag->getOption<bool>("pre_optH_relax"); }
 	if ( tag->hasOption("auto_final_optH") ) { auto_final_optH_ = tag->getOption<bool>("auto_final_optH"); }
+	if ( tag->hasOption("use_aligner_in_docking") ) { use_aligner_in_docking_ = tag->getOption<bool>("use_aligner_in_docking"); }
 
 	if ( tag->hasOption("sample_ring_conformers") ) { sample_ring_conformers_ = tag->getOption<bool>("sample_ring_conformers"); }
 
@@ -2909,6 +3043,7 @@ GALigandDock::parse_my_tag(
 	if ( tag->hasOption("initial_pool") ) { initial_pool_ = tag->getOption<std::string>("initial_pool"); }
 	if ( tag->hasOption("template_pool") ) { template_pool_ = tag->getOption<std::string>("template_pool"); }
 	if ( tag->hasOption("n_template") ) { n_template_ = tag->getOption<core::Size>("n_template"); }
+	if ( tag->hasOption("mcs_align_mode") ) { mcs_align_mode_ = tag->getOption<std::string>("mcs_align_mode"); }
 	if ( tag->hasOption("reference_oversample") ) { reference_oversample_ = tag->getOption<core::Real>("reference_oversample"); }
 	if ( tag->hasOption("reference_pool") ) {
 		reference_pool_ = tag->getOption<std::string>("reference_pool");
@@ -3007,6 +3142,7 @@ GALigandDock::parse_my_tag(
 	}
 	if ( tag->hasOption("calculate_native_density") ) { calculate_native_density_ = tag->getOption<bool>("calculate_native_density"); }
 
+	if ( tag->hasOption("optH_only_rotamer") ) { optH_only_rotamer_ = tag->getOption<bool>("optH_only_rotamer"); }
 
 	// post-processing
 	if ( tag->hasOption("final_exact_minimize") ) {
@@ -3103,6 +3239,8 @@ GALigandDock::parse_my_tag(
 
 	// output control
 	if ( tag->hasOption("output_ligand_only") ) { output_ligand_only_ = tag->getOption<bool>("output_ligand_only"); }
+	if ( tag->hasOption("output_minipose") ) { output_minipose_ = tag->getOption<bool>("output_minipose"); }
+	if ( tag->hasOption("force_nreport") ) { force_nreport_ = tag->getOption<bool>("force_nreport"); }
 
 	// detailed per-cycle controls
 	utility::vector1< utility::tag::TagCOP > const stage_tags( tag->getTags() );
@@ -3292,6 +3430,10 @@ GALigandDock::get_optimizer(
 	optimizer->set_rot_energy_cutoff( rot_energy_cutoff_ );  // at some point make this a parameter?
 	optimizer->set_favor_native( favor_native_ );
 	optimizer->set_align_reference_atom_ids( align_reference_atom_ids_ );
+	optimizer->set_optH_only_rotamer( optH_only_rotamer_ );
+	if ( optH_only_rotamer_ ) {
+		optimizer->set_favor_native( 0.0 );
+	}
 	return optimizer;
 }
 
@@ -3352,6 +3494,8 @@ void GALigandDock::provide_xml_schema( utility::tag::XMLSchemaDefinition & xsd )
 	attlist + XMLSchemaAttribute( "initial_pool", xs_string, "Include these structures in the initial pool.");
 	attlist + XMLSchemaAttribute( "template_pool", xs_string, "Use the template structure for MCSAligner to generate the starting pool.");
 	attlist + XMLSchemaAttribute( "n_template", xsct_non_negative_integer, "The number of copies of the template structure in the intial pool.");
+	attlist + XMLSchemaAttribute( "mcs_align_mode", xs_string, "MCSAligner mode. default or strict.");
+	attlist + XMLSchemaAttribute( "use_aligner_in_docking", xsct_rosetta_bool, "Align the genes during docking. Only support MCSAligner at this point.");
 	attlist + XMLSchemaAttribute( "multiple_ligands", xs_string, "Scan ligands with these residue types.");
 	attlist + XMLSchemaAttribute( "multiple_ligands_file", xs_string, "Scan ligands with these residue types in a text file.");
 	attlist + XMLSchemaAttribute( "ligand_structure_file", xs_string, "Scan ligands with these ligand structure files (pdb or silent file).");
@@ -3391,6 +3535,7 @@ void GALigandDock::provide_xml_schema( utility::tag::XMLSchemaDefinition & xsd )
 	attlist + XMLSchemaAttribute( "rotmutWidth", xsct_real, "maximum angle of rigid body mutation");
 	attlist + XMLSchemaAttribute( "transmutWidth", xsct_real, "maximum translation distance of rigid body mutation");
 	attlist + XMLSchemaAttribute( "calculate_native_density", xsct_rosetta_bool, "Find the density correlation for the native pose and exit. Default: false");
+	attlist + XMLSchemaAttribute( "optH_only_rotamer", xsct_rosetta_bool, "Only optimize proton chi during docking. Default: false");
 
 	// per-cycle parameters (defaults)
 	attlist + XMLSchemaAttribute( "ngen", xs_integer, "number of generations");
@@ -3404,6 +3549,8 @@ void GALigandDock::provide_xml_schema( utility::tag::XMLSchemaDefinition & xsd )
 
 	// output parameters
 	attlist + XMLSchemaAttribute( "output_ligand_only", xsct_rosetta_bool, "Only output docked ligand structure. default: false");
+	attlist + XMLSchemaAttribute( "output_minipose", xsct_rosetta_bool, "Output only ligand and movable sidechains. default: false");
+	attlist + XMLSchemaAttribute( "force_nreport", xsct_rosetta_bool, "Output only ligand and movable sidechains. default: false");
 
 	// attributes for "Stage" subelement
 	AttributeList stage_subelement_attributes;

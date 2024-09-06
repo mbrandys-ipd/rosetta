@@ -61,9 +61,10 @@ MDBase::init()
 	// Access to these rather by set_reportstep & set_selectmode
 	//md_report_stepsize_ = option[ md::report ]();
 	//selectmode_ = option[ md::selectmode ]();
-	md_report_stepsize_ = 500; // every 1 ps
-	md_energy_report_stepsize_ = 50; // every 0.1 ps
-	md_rsr_update_stepsize_ = 50; // every 0.1 ps
+	// md_report_stepsize_ = 500; // every 1 ps (this number * dt = picoseconds)
+	// md_energy_report_stepsize_ = 50; // every 0.1 ps (this number * dt = picoseconds)
+	report_step_ = 50;
+	md_rsr_update_stepsize_ = 50; // every 0.1 ps (this number * dt = picoseconds)
 	selectmode_ = "final";
 
 	nstep_ = 100;
@@ -76,7 +77,7 @@ MDBase::init()
 		scheduled_ = false;
 	}
 
-	context_update_step_ = 10000000; // Default: Never update
+	context_update_step_ = 10000000000; // Default: Never update //mbedit, this is default line in case i need it 
 
 	// Default
 	ncyc_premin_ = 50;
@@ -142,11 +143,10 @@ MDBase::set_constraint( core::Real const sdev )
 {
 	uniform_coord_constrained_ = true;
 	cst_sdev_ = sdev;
-
 	// starting coordinate constraint
-	if ( (*scorefxn_)[ core::scoring::coordinate_constraint ] == 0.0 ) {
-		scorefxn_->set_weight( core::scoring::coordinate_constraint, 1.0 );
-	}
+	// if ( (*scorefxn_)[ core::scoring::coordinate_constraint ] == 0.0 ) {
+	// 	scorefxn_->set_weight( core::scoring::coordinate_constraint, 1.0 );
+	// }
 }
 
 void

@@ -323,6 +323,17 @@ angle_p1_deriv(
 		//std::cout << "out-of-tol: " << d << std::endl;
 		d = Real(1.0) - tol;
 	}
+	//mbedit for debugging a rare bug:
+	if ( std::isnan( d ) ) {
+		std::cout << "src.numeric.deriv.angle_deriv::angle_p1_deriv: d is Nan! dumping inputs from function p1_angle_deriv:" <<
+		" p1(x,y,z): (" << p1.x() << "," << p1.y() << "," << p1.z() <<
+		") p2(x,y,z): (" << p2.x() << "," << p2.y() << "," << p2.z() <<
+		") p3(x,y,z): (" << p3.x() << "," << p3.y() << "," << p3.z() << ")" <<
+		"f1(x,y,z): (" << f1.x() << "," << f1.y() << "," << f1.z() << ")" <<
+		"f2(x,y,z): (" << f2.x() << "," << f2.y() << "," << f2.z() << "). End of message."
+		<< std::endl;
+	}
+	//mbedit end
 	theta = numeric::arccos( d );
 
 }

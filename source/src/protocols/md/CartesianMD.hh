@@ -127,22 +127,31 @@ private:
 	void VelocityVerlet_Integrator( core::pose::Pose & pose,
 		core::optimization::CartesianMinimizerMap &min_map,
 		md::Rattle & rattle,
-		bool const update_score = false );
+		bool const update_score = false,
+		core::Size istep = 1 ); //mbedit added istep
 
 	void do_minimize( core::pose::Pose &pose,
 		core::optimization::MinimizerOptions const &options,
 		bool const &show_energy );
+
+	core::Real calculate_free_receptor_score( core::pose::Pose pose );
+	core::Real calculate_free_ligandA_score( core::pose::Pose pose );
+	core::Real calculate_free_ligandB_score( core::pose::Pose pose );
+	core::Real calculate_complexligA_score( core::pose::Pose pose );
+	core::Real calculate_complexligB_score(	core::pose::Pose pose );
+
 
 	void do_MD( core::pose::Pose & pose,
 		core::Size const &nstep,
 		core::Real const &temp0 = 300,
 		bool const &initialize = false );
 
-	void initialize_velocity( core::Real const &temperature );
+	void initialize_velocity( core::Real const &temperature, core::pose::PoseOP const pose_temp );
 
 	void report_MD( core::pose::Pose &pose,
 		core::optimization::CartesianMinimizerMap const &min_map,
-		bool const report_trj );
+		bool const report_trj,
+		core::Size istep = 1 ); 
 
 private:
 
@@ -152,9 +161,15 @@ private:
 
 	core::optimization::CartesianMinimizerMap min_map_;
 	timeval inittime_;
-	bool use_rattle_ = true;
+	bool use_rattle_ = false;
+	bool debug_mode_ = false;
+	bool cst_beta_ = false;
+	bool nve_mode_ = false;
+	bool calc_intE_ = false;
+	core::Size dumpstep_ = 100000;
 
 	core::pose::Pose native_;
+	bool header_on_ = true;
 	bool native_given_ = false;
 	std::map< core::Size, core::Size > native_resmap_;
 

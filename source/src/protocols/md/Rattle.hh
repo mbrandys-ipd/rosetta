@@ -126,9 +126,9 @@ public:
 					update_[ia] = true;
 					update_[ib] = true;
 
-					dxyz2[1] = xyz_old[3*ib-2]-xyz[3*ia-2];
-					dxyz2[2] = xyz_old[3*ib-1]-xyz[3*ia-1];
-					dxyz2[3] = xyz_old[3*ib  ]-xyz[3*ia  ];
+					dxyz2[1] = xyz_old[3*ib-2]-xyz_old[3*ia-2];
+					dxyz2[2] = xyz_old[3*ib-1]-xyz_old[3*ia-1];
+					dxyz2[3] = xyz_old[3*ib  ]-xyz_old[3*ia  ];
 
 					core::Real const dot = dxyz1[1]*dxyz2[1] + dxyz1[2]*dxyz2[2] + dxyz1[3]*dxyz2[3];
 

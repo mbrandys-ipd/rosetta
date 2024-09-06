@@ -14,6 +14,7 @@
 
 #include <protocols/ligand_docking/GALigandDock/GAOptimizer.hh>
 #include <protocols/ligand_docking/GALigandDock/LigandConformer.hh>
+#include <protocols/ligand_docking/GALigandDock/util.hh>
 
 #include <numeric/random/random.hh>
 #include <ObjexxFCL/format.hh>
@@ -42,6 +43,9 @@ static basic::Tracer TR( "protocols.ligand_docking.GALigandDock.GAOptimizer" );
 
 GAOptimizer::GAOptimizer( GridScorerOP grid ) {
 	scorefxn_ = grid;
+	favor_native_ = 0.0;
+	use_aligner_ = false;
+	optH_only_rotamer_ = false;
 }
 
 GAOptimizer::~GAOptimizer(){}
@@ -87,7 +91,11 @@ GAOptimizer::run( LigandConformers & genes ) {
 		scorefxn_->set_packer_cycles( stage_i.packcycles );
 
 		if ( i==1 || changed ) {
-			initialize_rotamer_set_and_scores( genes[1] );
+			if ( optH_only_rotamer_ ) {
+				initialize_optH_rotamer_set_and_scores( genes[1] );
+			} else{
+				initialize_rotamer_set_and_scores( genes[1] );
+			}
 			optimize_generation( genes, stage_i.ramp_schedule ); // optimize with new smoothing factor
 			if ( TR.Debug.visible() ) {
 				show_status( genes, "rescored pool at start of stage "+utility::to_string( i ) );
@@ -104,6 +112,11 @@ GAOptimizer::run( LigandConformers & genes ) {
 		for ( core::Size j = 1; j <= stage_i.repeats; ++j ) {
 			update_tags( genes );
 			next_generation( genes, genes_new, stage_i.pool, stage_i.pmut );
+			if ( use_aligner_ ) align_conformers( genes_new );
+			if ( TR.Debug.visible() ) {
+				std::string extra="stage_"+std::to_string(i)+"_iter_"+std::to_string(j);
+				dump_ligand_conformers(genes_new, extra);
+			}
 			optimize_generation( genes_new, stage_i.ramp_schedule );
 			if ( TR.Debug.visible() ) {
 				show_status( genes_new, "generated in stage "+std::to_string(i)+" iter "+std::to_string(j) );
@@ -313,6 +326,13 @@ GAOptimizer::update_pool(
 	}
 }
 
+void
+GAOptimizer::align_conformers(LigandConformers & genes){
+	for ( auto & gene : genes ) {
+		aligner_->apply( gene );
+	}
+}
+
 
 // initializes the rotamer sets and precomputes 1b and 2b energies.
 void
@@ -415,6 +435,264 @@ GAOptimizer::initialize_rotamer_set_and_scores(
 
 					res_rotamers.push_back( res_rotamer_i );
 				}
+			}
+		}
+
+		// filter by: a) cumulative Prob and b) score
+		std::sort(res_rotamers.begin(), res_rotamers.end(),
+			[&](PlaceableRotamer const &ii, PlaceableRotamer const &jj){ return ii.prob > jj.prob; } );
+
+		PlaceableRotamers res_rotamers_temp = res_rotamers;
+		res_rotamers.clear();
+		float probsum( 0.0 ), keptprobsum( 0.0 ), maxkeptprob( 1e-6 );
+		for ( core::Size irot = 1; irot <= res_rotamers_temp.size(); ++irot ) {
+			if ( probsum > max_rot_cumulative_prob_ ) break; // note: this might split proton chi samples
+
+			bool scoreGood = (res_rotamers_temp[irot].score.score(1.0) <= rot_energy_cutoff_);
+			bool rotInBox = (res_rotamers_temp[irot].score.penalty_wtd_ <= 1e-6);
+
+			if ( scoreGood && rotInBox ) {
+				keptprobsum += res_rotamers_temp[irot].prob;
+				maxkeptprob = std::max( res_rotamers_temp[irot].prob, maxkeptprob );
+				res_rotamers.push_back( res_rotamers_temp[irot] );
+			}
+			probsum += res_rotamers_temp[irot].prob;
+		}
+
+		// [1] add input sidechain - with max prob
+		res_rotamer_i.prob = maxkeptprob; // probability
+		res_rotamer_i.rotno = 0; // 0==input
+		res_rotamer_i.restype = lig.get_protein_restype( isc );
+		res_rotamer_i.chis = lig.get_protein_chis( isc );
+
+		// fd this could be more efficient...
+		if ( pose->residue(resid).type().name() != res_rotamer_i.restype->name() ) {
+			core::conformation::Residue res_i( res_rotamer_i.restype , true );
+			pose->replace_residue( resid, res_i, true );
+		}
+		for ( core::Size ichi = 1; ichi <= res_rotamer_i.chis.size(); ++ichi ) {
+			pose->set_chi( ichi, resid, res_rotamer_i.chis[ichi] );
+		}
+		res_rotamer_i.lkbrinfo =
+			core::scoring::lkball::LKB_ResidueInfoOP(new core::scoring::lkball::LKB_ResidueInfo (pose->residue( resid )) );
+		res_rotamer_i.score = scorefxn_->get_1b_energy(pose->residue( resid ), res_rotamer_i.lkbrinfo, false);
+		res_rotamer_i.score.bonus_wtd_ = -favor_native_; // apply bonus to alternate tautomer
+
+		keptprobsum += res_rotamer_i.prob;
+		res_rotamers.push_back( res_rotamer_i );
+
+		// special case for HIS: add alternate protonation of input conformation
+		if ( resname == "HIS" || resname == "HIS_D" ) {
+			std::string alttype = (resname == "HIS") ? "HIS_D" : "HIS";
+
+			if ( pose->residue(resid).type().name() != alttype ) {
+				core::conformation::Residue res_i( restype_set->name_map( alttype ) , true );
+				pose->replace_residue( resid, res_i, true );
+			}
+			for ( core::Size ichi = 1; ichi <= res_rotamer_i.chis.size(); ++ichi ) {
+				pose->set_chi( ichi, resid, res_rotamer_i.chis[ichi] );
+			}
+			res_rotamer_i.lkbrinfo =
+				core::scoring::lkball::LKB_ResidueInfoOP(new core::scoring::lkball::LKB_ResidueInfo (pose->residue( resid )) );
+			res_rotamer_i.score = scorefxn_->get_1b_energy(pose->residue( resid ), res_rotamer_i.lkbrinfo, false);
+			res_rotamer_i.score.bonus_wtd_ = -favor_native_; // apply bonus to alternate tautomer
+
+			res_rotamer_i.restype = pose->residue(resid).type_ptr();
+
+			keptprobsum += res_rotamer_i.prob;
+			res_rotamers.push_back( res_rotamer_i );
+		}
+
+		// sort by res type
+		std::sort(res_rotamers.begin(), res_rotamers.end(),
+			[&](PlaceableRotamer const &ii, PlaceableRotamer const &jj){
+				return ((ii.restype->name() > jj.restype->name()) || (ii.restype->name() == jj.restype->name() && ii.prob > jj.prob));
+			} );
+		// [2] add placeholder sidechain (for "include current")  - with max prob ... KEEP THIS LAST!
+		res_rotamer_i.prob = maxkeptprob; // probability
+		res_rotamer_i.rotno = 0;
+		res_rotamer_i.score.reset();
+		res_rotamer_i.restype = nullptr;
+		keptprobsum += res_rotamer_i.prob;
+		res_rotamers.push_back( res_rotamer_i );
+
+		// finally normalize & accum probability and sotr to rotamer_data_
+		core::Real probAccum = 0.0;
+		for ( core::Size irot = 1; irot <= res_rotamers.size(); ++irot ) {
+			res_rotamers[irot].prob /= keptprobsum;
+			probAccum += res_rotamers[irot].prob;
+			res_rotamers[irot].prob_accum = probAccum;
+		}
+
+		rotamer_data_[isc] = res_rotamers;
+		totalrotamers += res_rotamers.size();
+
+
+		// reporting
+		if ( first_call ) {
+			TR << "-------------------------------------------------------------------" << std::endl;
+			TR << "| RESIDUE   i irot prob   aprob  score  ";
+			for ( core::Size ichi = 1; ichi <= res_rotamer_i.chis.size(); ++ichi ) {
+				TR << " chi"+std::to_string(ichi)+"  ";
+			}
+			TR << std::endl;
+			for ( core::Size irot = 1; irot <= res_rotamers.size(); ++irot ) {
+				//if (irot == 4 && res_rotamers.size() > 6) {
+				// TR << "| (" << res_rotamers.size()-5 << " rotamers omitted)" << std::endl;
+				//}
+				//if (irot > 3 && irot <res_rotamers.size()-2) continue;
+				std::string restype_name = (res_rotamers[irot].restype == nullptr) ? "   " : res_rotamers[irot].restype->name();
+				TR << "| " << I(3,int(resid)) << " " << restype_name
+					<< " " << I(3,int(irot)) << " " << I(3,int(res_rotamers[irot].rotno))
+					<< " " << F(6,4,res_rotamers[irot].prob)
+					<< " " << F(6,4,res_rotamers[irot].prob_accum)
+					<< " " << F(6,2,res_rotamers[irot].score.score(1.0));
+				for ( core::Size ichi = 1; ichi <= res_rotamers[irot].chis.size(); ++ichi ) {
+					TR << " " << F(6,1,res_rotamers[irot].chis[ichi]);
+				}
+				TR << std::endl;
+			}
+			TR << "-------------------------------------------------------------------" << std::endl;
+		}
+	} // isc
+
+	TR << "Built " << totalrotamers << " rotamers with E<" << rot_energy_cutoff_
+		<< " and cumulative P<" << max_rot_cumulative_prob_ << std::endl;
+
+	// [3] compute pairwise energies and construct rotamer interaction graph
+	for ( core::Size isc = 1; isc <= movingscs.size(); ++isc ) {
+		rotamer_energies_.add_residue( rotamer_data_[isc].size() );
+	}
+	rotamer_energies_.finalize();
+
+	for ( core::Size isc = 1; isc <= movingscs.size(); ++isc ) {
+		core::Size resid_i = movingscs[isc];
+
+		for ( core::Size irot = 1; irot < rotamer_data_[isc].size(); ++irot ) {  // last residue is placeholder (to be scored later)
+
+			if ( pose->residue_type(resid_i).name() != rotamer_data_[isc][irot].restype->name() ) {
+				core::conformation::Residue res_i ( rotamer_data_[isc][irot].restype , true );
+				pose->replace_residue( resid_i, res_i, true );
+			}
+			for ( core::Size ichi = 1; ichi <= pose->residue_type( resid_i ).nchi(); ++ichi ) {
+				pose->set_chi( ichi, resid_i, rotamer_data_[isc][irot].chis[ichi] );
+			}
+
+			rotamer_energies_.energy1b( isc, irot ) = rotamer_data_[isc][irot].score; // includes native "bonus"
+
+			for ( core::Size jsc = isc+1; jsc <= movingscs.size(); ++jsc ) {
+				core::Size resid_j = movingscs[jsc];
+
+				for ( core::Size jrot = 1; jrot < rotamer_data_[jsc].size(); ++jrot ) {  // last residue is placeholder (to be scored later)
+					if ( pose->residue_type(resid_j).name() != rotamer_data_[jsc][jrot].restype->name() ) {
+						core::conformation::Residue res_j ( rotamer_data_[jsc][jrot].restype , true );
+						pose->replace_residue( resid_j, res_j, true );
+					}
+					for ( core::Size jchi = 1; jchi <= pose->residue_type( resid_j ).nchi(); ++jchi ) {
+						pose->set_chi( jchi, resid_j, rotamer_data_[jsc][jrot].chis[jchi] );
+					}
+
+					rotamer_energies_.energy2b( isc, irot, jsc, jrot ) =
+						scorefxn_->get_2b_energy(
+						*pose,
+						pose->residue( resid_i ), rotamer_data_[isc][irot].lkbrinfo, false,
+						pose->residue( resid_j ), rotamer_data_[jsc][jrot].lkbrinfo, false);
+				}
+			}
+		}
+	}
+}
+
+// initializes the rotamer sets and precomputes 1b and 2b energies.
+void
+GAOptimizer::initialize_optH_rotamer_set_and_scores(
+	LigandConformer lig
+) {
+	using namespace core::pack::dunbrack;
+	using namespace ObjexxFCL::format;
+	using namespace core::chemical;
+
+	core::chemical::ResidueTypeSetCOP restype_set
+		= core::chemical::ChemicalManager::get_instance()->residue_type_set( core::chemical::FA_STANDARD );
+
+	utility::vector1< core::Size > const &movingscs = lig.moving_scs();
+	core::Size nSCs = movingscs.size();
+
+	core::pose::PoseOP pose( new core::pose::Pose() );
+	lig.to_pose( pose );
+
+	// if this is called a second time (e.g., due to scfxn changing) just replace existing
+	bool first_call = (rotamer_data_.size() == 0);
+	rotamer_data_.clear();
+	rotamer_energies_.clear();
+
+	rotamer_data_.resize( nSCs );
+
+	core::Real rotprob_epsilon = 0.0;
+
+	core::Size totalrotamers = 0;
+	for ( core::Size isc = 1; isc <= movingscs.size(); ++isc ) {
+		core::Size const resid( movingscs[isc] );
+
+		// design would modify this logic
+		utility::vector1< std::string > allowed_types;
+		std::string resname = pose->residue( resid ).name();
+		allowed_types.push_back( resname );
+		if ( resname == "HIS" ) {
+			allowed_types.push_back( "HIS_D" );
+		} else if ( resname == "HIS_D" ) {
+			allowed_types.push_back( "HIS" );
+		}
+
+		PlaceableRotamers res_rotamers;
+		PlaceableRotamer res_rotamer_i;
+
+		for ( core::Size iallowed = 1; iallowed <= allowed_types.size(); ++iallowed ) {
+			// NOTE! this idealizes the input residue!
+			core::conformation::Residue res_i ( restype_set->name_map( allowed_types[iallowed] ) , true );
+			pose->replace_residue( resid, res_i, true );
+
+			core::conformation::Residue const &rsd = pose->residue( resid );
+			core::chemical::AA aa( rsd.aa() );
+			core::Size nchi = rsd.nchi();
+
+			// pack info into rotamer data
+			res_rotamer_i.resid = resid;
+			res_rotamer_i.restype = pose->residue( resid ).type_ptr();
+			res_rotamer_i.chis.resize( nchi , 0.0 );
+			res_rotamer_i.chis = lig.get_protein_chis( isc );
+
+			// opt-H for Ser/Thr/Tyr
+			core::Size nProtChiSteps = 1;
+			core::Real protChiOffset = 0.0;
+			if ( aa==aa_ser || aa==aa_thr ) {
+				nProtChiSteps = 18;
+			} else if (aa==aa_cys) {
+				nProtChiSteps = 3;
+				protChiOffset = 60.0;
+			} else if ( aa==aa_tyr ) {
+				nProtChiSteps = 2;
+			}
+
+			core::Real prob_i = 1.0 / nProtChiSteps;
+			prob_i /= allowed_types.size();
+
+			res_rotamer_i.prob = prob_i;
+			res_rotamer_i.rotno = 1;
+			
+
+			for ( core::Size iprotchi = 1; iprotchi <= nProtChiSteps; ++iprotchi ) {
+				if ( nProtChiSteps!=1 ) res_rotamer_i.chis[ nchi ] = protChiOffset + (iprotchi-1) * 360.0/nProtChiSteps;
+
+				// build residue in pose, add lkb info, and score against background
+				for ( core::Size ichi = 1; ichi <= nchi; ++ichi ) {
+					pose->set_chi( ichi, resid, res_rotamer_i.chis[ichi] );
+				}
+				res_rotamer_i.lkbrinfo =
+					core::scoring::lkball::LKB_ResidueInfoOP(new core::scoring::lkball::LKB_ResidueInfo (pose->residue( resid )) );
+				res_rotamer_i.score = scorefxn_->get_1b_energy(pose->residue( resid ), res_rotamer_i.lkbrinfo, false);
+
+				res_rotamers.push_back( res_rotamer_i );
 			}
 		}
 

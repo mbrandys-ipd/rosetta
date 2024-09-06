@@ -43,7 +43,11 @@
 
 
 #include <basic/options/keys/dna.OptionKeys.gen.hh>
+//mbedit
+#include <basic/options/keys/corrections.OptionKeys.gen.hh>
 #include <basic/options/keys/score.OptionKeys.gen.hh>
+#include <basic/options/keys/md.OptionKeys.gen.hh>
+
 
 #include <basic/datacache/BasicDataCache.hh>
 #include <basic/Tracer.hh>
@@ -1144,23 +1148,71 @@ void
 LK_BallEnergy::residue_pair_energy(
 	conformation::Residue const & rsd1,
 	conformation::Residue const & rsd2,
-	pose::Pose const & /*pose*/,
+	pose::Pose const & pose,
 	ScoreFunction const & sf,
 	EnergyMap & emap
 ) const
 {
 	// TEMPORARILY DISABLED if ( pose.energies().use_nblist_auto_update() ) return;
-
+	//mbedit: TR line:
+	// TR << "LK_BallEnergy.residue_pair_energy fxn1 starting" << std::endl;
 	// there might be data stashed in these residues if we came through certain packing routes
 	using conformation::residue_datacache::LK_BALL_INFO;
 	debug_assert( dynamic_cast< LKB_ResidueInfo const * >( rsd1.data().get_raw_const_ptr( LK_BALL_INFO ) ));
 	debug_assert( dynamic_cast< LKB_ResidueInfo const * >( rsd2.data().get_raw_const_ptr( LK_BALL_INFO ) ));
 
+	EnergyMap emap_ij; //create fake emap to scale for fep-md sims so we arent scaling emap directly; emap gets updated with emap_ij whether scaled for fep-md or not (mbrandys)
+
 	residue_pair_energy( rsd1,
 		*( static_cast< LKB_ResidueInfo const * >( rsd1.data().get_raw_const_ptr( LK_BALL_INFO ))),
 		rsd2,
 		*( static_cast< LKB_ResidueInfo const * >( rsd2.data().get_raw_const_ptr( LK_BALL_INFO ))),
-		sf, emap );
+		sf, emap_ij ); //mbedit: passing in emap_ij, default was emap
+	
+	//mbedit: rescaling emap_ij with scale factor if fep_on option bool = True
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug residue_pair_energy, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			emap_ij[scoring::lk_ball] *= 0.0;
+			emap_ij[scoring::lk_ball_iso] *= 0.0;
+			emap_ij[scoring::lk_ball_bridge] *= 0.0;
+			emap_ij[scoring::lk_ball_bridge_uncpl] *= 0.0;
+			// std::cout << "mb debug residue_pair_energy, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
+				if ( lkball_scale_factor == 0.0 ) {
+					lkball_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				emap_ij[scoring::lk_ball] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_iso] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_bridge] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_bridge_uncpl] *= lkball_scale_factor;
+				// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
+				lkball_scale_factor = 1.0 - lkball_scale_factor;
+				if ( lkball_scale_factor == 0.0 ) {
+					lkball_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				}
+				emap_ij[scoring::lk_ball] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_iso] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_bridge] *= lkball_scale_factor;
+				emap_ij[scoring::lk_ball_bridge_uncpl] *= lkball_scale_factor;
+				// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+	//mbedit end
+	emap += emap_ij; //update emap with emap_ij (mbrandys)
 
 }
 
@@ -1568,6 +1620,7 @@ LK_BallEnergy::residue_pair_energy(
 	CPCrossoverBehavior crossover = (rsd1.is_polymer_bonded(rsd2) && rsd2.is_polymer_bonded(rsd1))? CP_CROSSOVER_4 : CP_CROSSOVER_3;
 
 	CountPairFactory::create_count_pair_function_and_invoke( rsd1, rsd2, crossover, invoker );
+	
 }
 
 ///@details This is a crib of residue_pair_energy(), expanded to account for the atomistic evaluation.
@@ -2058,14 +2111,56 @@ LK_BallEnergy::eval_residue_pair_derivatives(
 	debug_assert( r1_at_derivs.size() >= rsd1.natoms() );
 	debug_assert( r2_at_derivs.size() >= rsd2.natoms() );
 
+	//mbedit
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	EnergyMap weights_ij = weights;
+
+	if ( (option[ basic::options::OptionKeys::md::fep_on ]) && ((rsd1.is_ligand()) || (rsd2.is_ligand())) ) {
+		// std::cout << "mb debug eval_residue_pair_derivatives, fep on, rsd1 or rsd2 is ligand." << std::endl; //debug
+		std::string ligA = option[ basic::options::OptionKeys::md::ligA_name ]; // name of second to last resi which should be ligand A
+		std::string ligB = option[ basic::options::OptionKeys::md::ligB_name ]; // name of last resi which should be ligand B
+		// std::cout << "mb debug, ligA name is: " << ligA << ", ligB name: " << ligB << std::endl;
+		
+		if ( ( (rsd1.name() == ligA) && (rsd2.name() == ligB) ) || ( (rsd1.name() == ligB) && (rsd2.name() == ligA) ) ) {
+			weights_ij[scoring::lk_ball] *= 0.0;
+			weights_ij[scoring::lk_ball_iso] *= 0.0;
+			weights_ij[scoring::lk_ball_bridge] *= 0.0;
+			weights_ij[scoring::lk_ball_bridge_uncpl] *= 0.0;
+			// std::cout << "mb debug eval_residue_pair_derivatives, rsd1 and rsd2 are both the lig of interest; f1s/f2s * 0" << std::endl; //debug
+		} else {
+			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
+				weights_ij[scoring::lk_ball] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_iso] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_bridge] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_bridge_uncpl] *= lkball_scale_factor;
+				// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+
+			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
+				lkball_scale_factor = 1 - lkball_scale_factor;
+				weights_ij[scoring::lk_ball] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_iso] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_bridge] *= lkball_scale_factor;
+				weights_ij[scoring::lk_ball_bridge_uncpl] *= lkball_scale_factor;
+				// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+			}
+		}
+	}
+	//mbedit end
+
 	// retrieve some info
 	LKB_ResidueInfo const & rsd1_info( retrieve_lkb_resdata( rsd1 ) );
 	LKB_ResidueInfo const & rsd2_info( retrieve_lkb_resdata( rsd2 ) );
+	//mbedit TR phrase
+	// TR << "eval_residue_pair_derivatives fxn starting" << std::endl;
 
 	auto const & nblist =
 		static_cast< ResiduePairNeighborList const & > (min_data.get_data_ref( lkball_nblist ));
-
-	bool use_lkbr_uncpl = (weights[core::scoring::lk_ball_bridge_uncpl]!=0);
+	//mbedit weights is weights_ij now
+	bool use_lkbr_uncpl = (weights_ij[core::scoring::lk_ball_bridge_uncpl]!=0);
 
 	utility::vector1< SmallAtNb > const & neighbs( nblist.atom_neighbors() );
 	for ( Size ii = 1, iiend = neighbs.size(); ii <= iiend; ++ii ) {
@@ -2079,13 +2174,12 @@ LK_BallEnergy::eval_residue_pair_derivatives(
 		if ( !use_lkbr_uncpl && d2 >= fasol_max_dis2_ ) continue;
 		//if ( d2 >= lkb_max_dis2_ ) continue;
 
-		//std::cout << "deriv: " << rsd1.seqpos() << " " << rsd2.seqpos() << std::endl;
-
 		// fpd ... new version works at the heavyatom level
+		//mbedit: (changed weights to weights_ij) to work with my fep-md code; weights_ij is just weights when fep-md mode is off
+
 		sum_deriv_contributions_for_heavyatom_pair(
-			d2, heavyatom1, rsd1, rsd1_info, heavyatom2, rsd2, rsd2_info, pose, weights, cp_weight, r1_at_derivs, r2_at_derivs );
+			d2, heavyatom1, rsd1, rsd1_info, heavyatom2, rsd2, rsd2_info, pose, weights_ij, cp_weight, r1_at_derivs, r2_at_derivs ); //passed in weights_ij
 	}
-	//std::cout << "LK_BallEnergy.cc: " << __LINE__ << std::endl;
 }
 
 //

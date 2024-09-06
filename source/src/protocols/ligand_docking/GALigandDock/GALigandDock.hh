@@ -20,6 +20,7 @@
 #include <protocols/ligand_docking/GALigandDock/GridScorer.hh>
 #include <protocols/ligand_docking/GALigandDock/LigandAligner.hh>
 #include <protocols/ligand_docking/GALigandDock/TorsionSampler.hh>
+#include <protocols/ligand_docking/GALigandDock/MCSAligner.hh>
 
 #include <protocols/ligand_docking/GALigandDock/GALigandDock.fwd.hh>
 #include <core/pose/extra_pose_info_util.hh>
@@ -408,6 +409,12 @@ private:
 		utility::vector1< bool > const &use_sc_only_in_grid
 	) const;
 
+	/// @brief setup MCS aligner
+	MCSAligner
+	get_mcs_aligner(
+		LigandConformer const &gene_initial
+	) const;
+
 	/// @brief generate an initial set of perturbed structures
 	LigandConformers
 	generate_perturbed_structures(
@@ -591,6 +598,8 @@ private:
 	bool reference_frac_auto_;
 	std::string initial_pool_, reference_pool_, template_pool_; // pdbs to include in initial pool
 	core::Size n_template_;
+	std::string mcs_align_mode_;
+	bool use_aligner_in_docking_;
 	bool premin_ligand_;
 	bool sample_ring_conformers_;
 	core::Real torsion_sampler_percentage_;
@@ -667,6 +676,10 @@ private:
 
 	bool has_density_map_;
 	bool output_ligand_only_;
+	bool output_minipose_;
+
+	bool optH_only_rotamer_;
+	bool force_nreport_;
 };
 
 

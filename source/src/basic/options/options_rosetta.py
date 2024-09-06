@@ -2759,7 +2759,14 @@ EX_SIX_QUARTER_STEP_STDDEVS   7          +/- 0.25, 0.5, 0.75, 1, 1.25 & 1.5 sd; 
 			Option( 'dun02_file',  'String', desc="Name of dun02 input file", default="rotamer/bbdep02.May.sortlib" ),
 			Option( 'ch_o_bond_potential',   'String', desc="Name of ch_o_bond potential file (search in the local directory first, then look in the database)" , default="scoring/score_functions/carbon_hbond/ch_o_bond_potential.dat" ),
 #			Option( 'fa_elec_co_only',   'Boolean', desc="Using only CO-CO interactions in fa_elec_bb_bb", default = 'false' ),
-			Option( 'lj_hbond_hdis', 'Real', desc="Lennard Jones sigma value for hatms, classically it's been at 1.95 but the average A-H distance for hydrogen bonding is 1.75 from crystal structures. (momeara)", default = '1.75' ),
+			Option( 'lj_hbond_dis', 'Real', desc="Lennard Jones sigma value for donor in hbond acceptor-donor relationship. Previously hardcoded to 3.0; with this flag you can test different values (mbrandys)", default = '3.0' ),
+            Option( 'lj_md_scale_factor', 'Real', desc="scale factor that multiplies against fa atr and fa rep emap values in etable as well as their derivatives; used for md simulations(mbrandys)", default = '1.0' ),
+			Option( 'sol_md_scale_factor', 'Real', desc="scale factor that multiplies against fa sol emap value in etable as well as its derivative; used for md simulations(mbrandys)", default = '1.0' ),
+			Option( 'elec_md_scale_factor', 'Real', desc="scale factor that multiplies against fa elec value as well as its derivative; used for md simulations(mbrandys)", default = '1.0' ),
+            Option( 'lkball_md_scale_factor', 'Real', desc="scale factor that multiplies against lk ball values as well as its derivative; used for md simulations(mbrandys)", default = '1.0' ),
+			Option( 'lj_switch_dis2sigma', 'Real', desc="Distance cutoff at which LJ potential becomes linear, def 0.6 (mbrandys)", default = '0.6' ),
+			Option( 'hbond_md_scale_factor', 'Real', desc=" scale factor that multiplies against hbond energies as well as its derivative; used for md simulations(mbrandys)", default = '1.0' ),
+            Option( 'lj_hbond_hdis', 'Real', desc="Lennard Jones sigma value for hatms, classically it's been at 1.95 but the average A-H distance for hydrogen bonding is 1.75 from crystal structures. (momeara)", default = '1.75' ),
 			Option( 'lj_hbond_OH_donor_dis', 'Real', desc="Lennard Jones sigma value for O in OH donor groups.  Classically it has been 3.0 but the average distances from crystal structurs is 2.6 (momeara)", default='2.6'),
 			Option( 'score12prime', 'Boolean', desc="Restore to score funciton parameters to score12 parameters and have getScoreFuntion return with score12prime.wts. The score12prime.wts differs from standard.wts + score12.wts_patch, in that the reference energies have been optimized with optE for sequence profile recovery", default='false' ),
 			Option( 'hbond_energy_shift', 'Real', desc="The shift upwards (through addition) of the well depth for the hydrogen bond polynomials; this shift is applied before the weights are applied.", default="0.0"),
@@ -9088,5 +9095,18 @@ EX_SIX_QUARTER_STEP_STDDEVS   7          +/- 0.25, 0.5, 0.75, 1, 1.25 & 1.5 sd; 
 	## for per_residue_solvent_exposure
 	Option_Group( 'solvent_exposure',
 		Option( 'method', 'String', desc="Method to calculate neighbor count, sphere or cone.", default="sphere", legal=["cone", "sphere"]),
+	), 
+
+	#md mover related options, specific to running src/protocols/md files (mbrandys)----------------------
+	Option_Group( 'md',
+		Option( 'cap_movements', 'Boolean', desc="turns on behavior to cap the acc and vel; otherwise no cap is set.", default="false"),
+		Option( 'max_vel', 'Real', desc="value to cap velocities with. Default is 10.0. Doesnt matter unless cap_movements flag is true.", default="10.0"),
+		Option( 'max_acc', 'Real', desc="value to cap accelerations with. Default is 3e3. Doesnt matter unless cap_movements flag is true.", default="3000.0"),
+        Option( 'fep_on', 'Boolean', desc="Boolean to change scoreterm and md protocol behaviour; two-body terms will have residue-pair-energy of 0 if res1 and res2 are both ligand. This is important in free energy perturbation (FEP) where two ligands are placed on top of each other in coordinate space, causing a clash in normal circumstances. Default is false.", default="false"),
+		Option( 'md_atm_map', 'IntegerVector', desc='pass in vector of ligA:ligB atom pairs (assumption is vector idx 0 and idx 1 correspond to first atom idx pair of ligA/ligB, then idx 2 and idx 3 correspond to second atom idx pair of ligA/ligB respectively and so on). default is empty vector. technically, this flag should not matter unless boolean flag fep_on is true.', default = 'utility::vector1<int>(1)'),
+        Option( 'ligA_name', 'String', desc='stores the 3-letter name of ligand A residue, ensuring that the scorefxn scaling code works correctly', default="LG1"),
+        Option( 'ligB_name', 'String', desc='stores the 3-letter name of ligand B residue, ensuring that the scorefxn scaling code works correctly',default="LG2"),
+
 	),
+	#md
 ) # end options

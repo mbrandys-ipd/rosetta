@@ -299,6 +299,17 @@ GridScorer::prepare_grid(
 	TR << "Initial dimension: " << dims_[0] << " x " << dims_[1] << " x " << dims_[2]
 		<< std::endl;
 	TR << "Initial origin = ( " << origin_[0] << "," << origin_[1] << "," << origin_[2] << " )" << std::endl;
+
+		//print the eight corners of the box
+	for ( core::Size i=0; i<8; ++i ) {
+		numeric::xyzVector< core::Real > xyz = origin_;
+		if ( i%2 == 1 ) { xyz[0] += dims_[0]*voxel_spacing_; }
+		if ( i%4 >= 2 ) { xyz[1] += dims_[1]*voxel_spacing_; }
+		if ( i >= 4 ) { xyz[2] += dims_[2]*voxel_spacing_; }
+		printf ("HETATM %4d VRT  %3s  %4d     %7.3f %7.3f %7.3f      %6.2f\n",
+				int(1), "BOX", int(i), xyz[0], xyz[1], xyz[2], 0.0 );
+	}
+	
 }
 
 void
