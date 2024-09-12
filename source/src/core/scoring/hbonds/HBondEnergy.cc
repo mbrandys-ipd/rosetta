@@ -497,7 +497,7 @@ HBondEnergy::residue_pair_energy(
 			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
 				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
 				if ( hb_scale_factor == 0.0 ) {
-					hb_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					hb_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
 				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
@@ -509,7 +509,7 @@ HBondEnergy::residue_pair_energy(
 				double hb_scale_factor = option[ corrections::score::hbond_md_scale_factor ];
 				hb_scale_factor = 1.0 - hb_scale_factor;
 				if ( hb_scale_factor == 0.0 ) {
-					hb_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					hb_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				emap_ij[scoring::hbond_sr_bb] *= hb_scale_factor;
 				emap_ij[scoring::hbond_lr_bb] *= hb_scale_factor;
