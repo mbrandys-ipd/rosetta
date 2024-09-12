@@ -1188,7 +1188,7 @@ LK_BallEnergy::residue_pair_energy(
 			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
 				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
 				if ( lkball_scale_factor == 0.0 ) {
-					lkball_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					lkball_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				emap_ij[scoring::lk_ball] *= lkball_scale_factor;
 				emap_ij[scoring::lk_ball_iso] *= lkball_scale_factor;
@@ -1201,7 +1201,7 @@ LK_BallEnergy::residue_pair_energy(
 				double lkball_scale_factor = option[ corrections::score::lkball_md_scale_factor ];
 				lkball_scale_factor = 1.0 - lkball_scale_factor;
 				if ( lkball_scale_factor == 0.0 ) {
-					lkball_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					lkball_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				emap_ij[scoring::lk_ball] *= lkball_scale_factor;
 				emap_ij[scoring::lk_ball_iso] *= lkball_scale_factor;

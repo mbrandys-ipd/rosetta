@@ -540,7 +540,7 @@ FA_ElecEnergy::residue_pair_energy(
 			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
 				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
 				if ( elec_scale_factor == 0.0 ) {
-					elec_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				score *= elec_scale_factor;
 				// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
@@ -550,7 +550,7 @@ FA_ElecEnergy::residue_pair_energy(
 				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
 				elec_scale_factor = 1.0 - elec_scale_factor;
 				if ( elec_scale_factor == 0.0 ) {
-					elec_scale_factor = 1e-6; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
 				}
 				score *= elec_scale_factor;
 				// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
