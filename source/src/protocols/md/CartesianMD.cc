@@ -1280,11 +1280,11 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	double scaleFactor_B = (1.0 - scaleFactor_A); //scale factor to be used for ligand B unscaled intE calc
 	
 	if ( scaleFactor_A == 0.0 ) {
-		scaleFactor_A = 1e-6;
+		scaleFactor_A = 1e-9;
 	}
 
 	if ( scaleFactor_B == 0.0 ) {
-		scaleFactor_B = 1e-6;
+		scaleFactor_B = 1e-9;
 	}
 
 	double unscaled_ligA_intE = 0.12345;
@@ -1509,6 +1509,7 @@ void CartesianMD::parse_movemap(
 	mmf->all_bb( bb );
 
 	movemap_factory_ = protocols::rosetta_scripts::parse_movemap_factory_legacy( tag, data, false, mmf );
+	// std::cout << "in parse_movemap: movemap_factor_:" << movemap_factory_ << std::endl;
 }
 
 std::string CartesianMD::get_name() const {
