@@ -137,8 +137,8 @@ private:
 	core::Real calculate_free_receptor_score( core::pose::Pose pose );
 	core::Real calculate_free_ligandA_score( core::pose::Pose pose );
 	core::Real calculate_free_ligandB_score( core::pose::Pose pose );
-	core::Real calculate_complexligA_score( core::pose::Pose pose );
-	core::Real calculate_complexligB_score(	core::pose::Pose pose );
+	utility::vector1<double> calculate_complexligA_score( core::pose::Pose pose );
+	utility::vector1<double> calculate_complexligB_score(	core::pose::Pose pose );
 
 
 	void do_MD( core::pose::Pose & pose,
