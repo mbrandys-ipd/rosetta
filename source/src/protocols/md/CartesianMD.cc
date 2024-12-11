@@ -687,7 +687,7 @@ CartesianMD::calculate_free_ligandB_score(
 
 }
 
-Real
+utility::vector1<double>
 CartesianMD::calculate_complexligA_score(
 	core::pose::Pose pose //this needs to be the pose with protein-ligA-ligB
 )
@@ -696,24 +696,21 @@ CartesianMD::calculate_complexligA_score(
 	core::Size ligB_resnum = pose.total_residue(); //removes ligB
 	pose.delete_residue_slow( ligB_resnum ); 
 
-	// //mbedit - using this to confirm i deleted ligandB only
-	// std::stringstream ss_mar2;
-	// ss_mar2 << "protein-ligA_complex.pdb";
-	// pose.dump_pdb( ss_mar2.str() );
-	// //mbedit end
-
 	//get just the protein - ligA interaction energy
 	core::Real complex_energy ( scorefxn()->score( pose ) );
+	core::Real apc = 0.0;
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-		core::Real apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
-		complex_energy = complex_energy - apc;
+		apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
 	}
+	// std::cout << "within complex ligA calc fxn, complex_energy without apc: " << complex_energy << ", apc: " << apc << std::endl;
+	complex_energy = complex_energy - apc;
+	utility::vector1<double> energies = {complex_energy,apc};
 
-	return complex_energy; 
+	return energies; 
 
 }
 
-Real
+utility::vector1<double>
 CartesianMD::calculate_complexligB_score(
 	core::pose::Pose pose //this needs to be the pose with protein-ligA-ligB
 )
@@ -730,11 +727,15 @@ CartesianMD::calculate_complexligB_score(
 
 	//get just the protein - ligA interaction energy
 	core::Real complex_energy ( scorefxn()->score( pose ) );
+	core::Real apc = 0.0;
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-		core::Real apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
-		complex_energy = complex_energy - apc;
+		apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
 	}	
-	return complex_energy; 
+	// std::cout << "within complex ligB calc fxn, complex_energy without apc: " << complex_energy << ", apc: " << apc << std::endl;
+	complex_energy = complex_energy - apc;
+	utility::vector1<double> energies = {complex_energy,apc};
+
+	return energies; 
 
 }
 
@@ -1269,6 +1270,8 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	core::Real ligAscore = 0.12345;
 	core::Real ligBscore = 0.12345;
 	core::Real complexligA_score = 0.12345;
+	core::Real ligA_apc = 0.12345;
+	core::Real ligB_apc = 0.12345;
 	core::Real complexligB_score = 0.12345;
 	core::Real ligAinteraction_E = 0.12345; 
 	core::Real ligBinteraction_E = 0.12345;
@@ -1294,12 +1297,18 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 		proteinscore = calculate_free_receptor_score(pose);
 
 		ligAscore = calculate_free_ligandA_score(pose);
-		complexligA_score = calculate_complexligA_score(pose);
+		utility::vector1<double> temp_e1 = calculate_complexligA_score(pose);
+		// std::cout << "calc intE temp_e1[1]:" << temp_e1[1] << ", temp_e1[2]:" << temp_e1[2] << std::endl;
+		complexligA_score = temp_e1[1];
+		ligA_apc = temp_e1[2];
 		ligAinteraction_E = complexligA_score - proteinscore - ligAscore;
 		unscaled_ligA_intE = ligAinteraction_E/scaleFactor_A;
 
 		ligBscore = calculate_free_ligandB_score(pose);
-		complexligB_score = calculate_complexligB_score(pose);
+		utility::vector1<double> temp_e2 = calculate_complexligB_score(pose);
+		// std::cout << "calc intE temp_e2[1]:" << temp_e2[1] << ", temp_e2[2]:" << temp_e2[2] << std::endl;
+		complexligB_score = temp_e2[1];
+		ligB_apc = temp_e2[2];
 		ligBinteraction_E = complexligB_score - proteinscore - ligBscore;
 		unscaled_ligB_intE = ligBinteraction_E/scaleFactor_B;
 
@@ -1322,7 +1331,7 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 		}
 
 		if (calc_intE_) {
-			TR << " unscaled_ligA_intE unscaled_ligB_intE";
+			TR << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
 		}
 		
 		TR << " time total_e temp rmsd:";
@@ -1340,7 +1349,7 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	}
 
 	if (calc_intE_) {
-		TR << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE;
+		TR << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
 	}
 	
 	TR << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd << ":";
