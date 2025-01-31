@@ -9109,7 +9109,7 @@ EX_SIX_QUARTER_STEP_STDDEVS   7          +/- 0.25, 0.5, 0.75, 1, 1.25 & 1.5 sd; 
 		Option( 'md_atm_map', 'IntegerVector', desc='pass in vector of ligA:ligB atom pairs (assumption is vector idx 0 and idx 1 correspond to first atom idx pair of ligA/ligB, then idx 2 and idx 3 correspond to second atom idx pair of ligA/ligB respectively and so on). default is empty vector. technically, this flag should not matter unless boolean flag fep_on is true.', default = 'utility::vector1<int>(1)'),
         Option( 'ligA_name', 'String', desc='stores the 3-letter name of ligand A residue, ensuring that the scorefxn scaling code works correctly', default="LG1"),
         Option( 'ligB_name', 'String', desc='stores the 3-letter name of ligand B residue, ensuring that the scorefxn scaling code works correctly',default="LG2"),
-
+		Option( 'md_outfile_name', 'String', desc="Name of output file where pertinent sim data will be written to. Note that if the file exists already, it will be appended to. (can give full path, otherwise will write file to rundir)", default="md_output.out" ),
 	),
 	#md
 ) # end options

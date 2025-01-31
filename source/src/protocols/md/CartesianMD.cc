@@ -66,6 +66,7 @@
 #include <basic/Tracer.hh>
 #include <ObjexxFCL/format.hh>
 #include <fstream>
+// #include <iostream>
 
 //Temporary
 #include <core/scoring/rms_util.hh>
@@ -874,7 +875,6 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 
 	//rattle is off by default
 	if ( use_rattle_ ) {
-		
 		rattle.run_rattle1( dt(), xyz_loc, vel_loc, mass() );
 	}
 
@@ -955,19 +955,20 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 	force before filling it up again.
 	*/
 	
-	//store values before force gets applied in next for loop
-	Multivec vel_loc_pre( vel_loc ), acc_loc_pre( acc_loc );
-	double avg_dvel, avg_dacc, avg_vel_pre, avg_vel_post, avg_acc_pre, avg_acc_post;
-	avg_dvel = avg_dacc = avg_vel_pre = avg_vel_post = avg_acc_pre = avg_acc_post = 0.0;
-	double max_dvel, min_dvel;
-	max_dvel = min_dvel = 0.0;
-	double max_vel_pre, min_vel_pre, max_vel_post, min_vel_post;
-	max_vel_pre = min_vel_pre = max_vel_post = min_vel_post = vel_loc_pre[1];
-	double max_dacc, min_dacc;
-	max_dacc = min_dacc = 0.0; 
-	double max_acc_pre, min_acc_pre, max_acc_post, min_acc_post;
-	max_acc_pre = min_acc_pre = max_acc_post = min_acc_post = acc_loc_pre[1];
-	
+	// //mb block start (variables being initialized for debug_mode_ comments)
+	// //store values before force gets applied in next for loop
+	// Multivec vel_loc_pre( vel_loc ), acc_loc_pre( acc_loc );
+	// double avg_dvel, avg_dacc, avg_vel_pre, avg_vel_post, avg_acc_pre, avg_acc_post;
+	// avg_dvel = avg_dacc = avg_vel_pre = avg_vel_post = avg_acc_pre = avg_acc_post = 0.0;
+	// double max_dvel, min_dvel;
+	// max_dvel = min_dvel = 0.0;
+	// double max_vel_pre, min_vel_pre, max_vel_post, min_vel_post;
+	// max_vel_pre = min_vel_pre = max_vel_post = min_vel_post = vel_loc_pre[1];
+	// double max_dacc, min_dacc;
+	// max_dacc = min_dacc = 0.0; 
+	// double max_acc_pre, min_acc_pre, max_acc_post, min_acc_post;
+	// max_acc_pre = min_acc_pre = max_acc_post = min_acc_post = acc_loc_pre[1];
+	// //mb block end
 
 	// Here, convert force into acceleration
 	// and integrate remaining half of velocity
@@ -980,25 +981,25 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 		//acc(i_dof) = -MDForceFactor*force[i_dof]/mass(i_atm);
 		//vel(i_dof) += 0.5*acc(i_dof)*dt();
 
-		if (debug_mode_) {
-			//accumulating to get pre-calculation average vel and acc
-			avg_vel_pre += vel_loc[i_dof];
-			avg_acc_pre += acc_loc[i_dof];
-			//get max and min of pre-calculation average vel and acc
-			if ( vel_loc[i_dof] > max_vel_pre ) {
-				max_vel_pre = vel_loc[i_dof];
-			} 
-			if ( vel_loc[i_dof] < min_vel_pre ) {
-				min_vel_pre = vel_loc[i_dof];
-			}
-			if ( acc_loc[i_dof] > max_acc_pre ) {
-				max_acc_pre = acc_loc[i_dof];
-			}
-			if ( acc_loc[i_dof] < min_acc_pre ) {
-				min_acc_pre = acc_loc[i_dof];
-			}
+		// if (debug_mode_) {
+		// 	// //accumulating to get pre-calculation average vel and acc
+		// 	// avg_vel_pre += vel_loc[i_dof];
+		// 	// avg_acc_pre += acc_loc[i_dof];
+		// 	//get max and min of pre-calculation average vel and acc
+		// 	if ( vel_loc[i_dof] > max_vel_pre ) {
+		// 		max_vel_pre = vel_loc[i_dof];
+		// 	} 
+		// 	if ( vel_loc[i_dof] < min_vel_pre ) {
+		// 		min_vel_pre = vel_loc[i_dof];
+		// 	}
+		// 	if ( acc_loc[i_dof] > max_acc_pre ) {
+		// 		max_acc_pre = acc_loc[i_dof];
+		// 	}
+		// 	if ( acc_loc[i_dof] < min_acc_pre ) {
+		// 		min_acc_pre = acc_loc[i_dof];
+		// 	}
 
-		}
+		// }
 		// std::cout << "mb debug loop(acc/vel from force loop), iatm: " << i_atm << " idof: " << i_dof << " force[idof]: " << force[i_dof] << std::endl;
 		acc_loc[i_dof] = -MDForceFactor*force[i_dof]/mass(i_atm); // this would be a good place to do a cap squash - dbeck
 		vel_loc[i_dof] += 0.5*acc_loc[i_dof]*dt();
@@ -1022,65 +1023,73 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 		}
 		//mbedit cap logic end
 
-		if (debug_mode_) {
-			//get values related to delta variables now that it's post-calculation/post-cap code
-			double dvel = vel_loc[i_dof] - vel_loc_pre[i_dof];
-			double dacc = acc_loc[i_dof] - acc_loc_pre[i_dof];
-			//accumulating for averages:
-			avg_dvel += dvel;
-			avg_dacc += dacc;
-			avg_vel_post += vel_loc[i_dof];
-			avg_acc_post += acc_loc[i_dof];
-			//getting max and min values:
-			if (dvel > max_dvel) {
-				max_dvel = dvel;
-			}
-			if (dvel < min_dvel) {
-				min_dvel = dvel;
-			}
-			if (dacc > max_dacc) {
-				max_dacc = dacc;
-			}
-			if (dacc < min_dacc) {
-				min_dacc = dacc;
-			}
+		// if (debug_mode_) {
+		// 	// //get values related to delta variables now that it's post-calculation/post-cap code
+		// 	// double dvel = vel_loc[i_dof] - vel_loc_pre[i_dof];
+		// 	// double dacc = acc_loc[i_dof] - acc_loc_pre[i_dof];
+		// 	// //accumulating for averages:
+		// 	// avg_dvel += dvel;
+		// 	// avg_dacc += dacc;
+		// 	// avg_vel_post += vel_loc[i_dof];
+		// 	// avg_acc_post += acc_loc[i_dof];
+		// 	// //getting max and min values:
+		// 	// if (dvel > max_dvel) {
+		// 	// 	max_dvel = dvel;
+		// 	// }
+		// 	// if (dvel < min_dvel) {
+		// 	// 	min_dvel = dvel;
+		// 	// }
+		// 	// if (dacc > max_dacc) {
+		// 	// 	max_dacc = dacc;
+		// 	// }
+		// 	// if (dacc < min_dacc) {
+		// 	// 	min_dacc = dacc;
+		// 	// }
 
-			if (vel_loc[i_dof] > max_vel_post) {
-				max_vel_post = vel_loc[i_dof];
-			}
-			if (vel_loc[i_dof] < min_vel_post) {
-				min_vel_post = vel_loc[i_dof];
-			}
-			if (acc_loc[i_dof] > max_acc_post) {
-				max_acc_post = acc_loc[i_dof];
-			}
-			if (acc_loc[i_dof] < min_acc_post) {
-				min_acc_post = acc_loc[i_dof];
-			}
-		}
+		// 	if (vel_loc[i_dof] > max_vel_post) {
+		// 		max_vel_post = vel_loc[i_dof];
+		// 	}
+		// 	if (vel_loc[i_dof] < min_vel_post) {
+		// 		min_vel_post = vel_loc[i_dof];
+		// 	}
+		// 	if (acc_loc[i_dof] > max_acc_post) {
+		// 		max_acc_post = acc_loc[i_dof];
+		// 	}
+		// 	if (acc_loc[i_dof] < min_acc_post) {
+		// 		min_acc_post = acc_loc[i_dof];
+		// 	}
+		// }
 
 	}
 
-	if ( (debug_mode_) && (istep%report_step() == 0 ) )  {
-		//getting averages
-		avg_dvel = avg_dvel/(n_dof());
-		avg_dacc = avg_dacc/(n_dof());
-		avg_vel_pre = avg_vel_pre/(n_dof());
-		avg_vel_post = avg_vel_post/(n_dof());
-		avg_acc_pre = avg_acc_pre/(n_dof());
-		avg_acc_post = avg_acc_post/(n_dof());
+	// if ( (debug_mode_) && (istep%report_step() == 0 ) )  {
+	// if (debug_mode_)  {
+	// 	// //getting averages
+	// 	// avg_dvel = avg_dvel/(n_dof());
+	// 	// avg_dacc = avg_dacc/(n_dof());
+	// 	// avg_vel_pre = avg_vel_pre/(n_dof());
+	// 	// avg_vel_post = avg_vel_post/(n_dof());
+	// 	// avg_acc_pre = avg_acc_pre/(n_dof());
+	// 	// avg_acc_post = avg_acc_post/(n_dof());
 
-		//mbedit - reporting values
-		TR << "mbedit_vvi nstep:" << istep
-		<< ":avg_dvel:" << avg_dvel << ":avg_dacc:" << avg_dacc << ":avg_vel_pre:" << avg_vel_pre 
-		<< ":avg_vel_post:" << avg_vel_post << ":avg_acc_pre:" << avg_acc_pre << ":avg_acc_post:" << avg_acc_post
-		<< ":max_dvel:" << max_dvel << ":min_dvel:" << min_dvel
-		<< ":max_vel_pre:" << max_vel_pre << ":min_vel_pre:" << min_vel_pre << ":max_vel_post:" << max_vel_post << ":min_vel_post:" << min_vel_post
-		<< ":max_dacc:" << max_dacc << ":min_dacc:" << min_dacc
-		<< ":max_acc_pre:" << max_acc_pre << ":min_acc_pre:" << min_acc_pre << ":max_acc_post:" << max_acc_post << ":min_acc_post:" << min_acc_post
-		<< std::endl;
-		//mbedit
-	}
+	// 	// //mbedit - reporting values
+	// 	// TR << "mbedit_vvi nstep:" << istep
+	// 	// << ":avg_dvel:" << avg_dvel << ":avg_dacc:" << avg_dacc << ":avg_vel_pre:" << avg_vel_pre 
+	// 	// << ":avg_vel_post:" << avg_vel_post << ":avg_acc_pre:" << avg_acc_pre << ":avg_acc_post:" << avg_acc_post
+	// 	// << ":max_dvel:" << max_dvel << ":min_dvel:" << min_dvel
+	// 	// << ":max_vel_pre:" << max_vel_pre << ":min_vel_pre:" << min_vel_pre << ":max_vel_post:" << max_vel_post << ":min_vel_post:" << min_vel_post
+	// 	// << ":max_dacc:" << max_dacc << ":min_dacc:" << min_dacc
+	// 	// << ":max_acc_pre:" << max_acc_pre << ":min_acc_pre:" << min_acc_pre << ":max_acc_post:" << max_acc_post << ":min_acc_post:" << min_acc_post
+	// 	// << std::endl;
+	// 	// //mbedit
+
+	// 	//mbedit - reporting values for debug_mode_ output
+	// 	TR << "mbedit_vvi nstep:" << istep
+	// 	<< ":max_vel_pre:" << max_vel_pre << ":min_vel_pre:" << min_vel_pre << ":max_vel_post:" << max_vel_post << ":min_vel_post:" << min_vel_post
+	// 	<< ":max_acc_pre:" << max_acc_pre << ":min_acc_pre:" << min_acc_pre << ":max_acc_post:" << max_acc_post << ":min_acc_post:" << min_acc_post
+	// 	<< std::endl;
+	// 	//mbedit
+	// }
 
 	// Multivec xyz_loc_temp4( xyz_loc ), vel_loc_temp4( vel_loc ), acc_loc_temp4( acc_loc ); //mbedit line - storing pre-rattle2 values
 
@@ -1111,6 +1120,10 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 	bool cap_on = option[basic::options::OptionKeys::md::cap_movements]; //default false
 	Real vel_cap = option[basic::options::OptionKeys::md::max_vel]; //default 10.0
 	Real acc_cap = option[basic::options::OptionKeys::md::max_acc]; //default 3e3
+
+	if (cap_on) {
+		TR << "capping is on; max vel allowed is " << vel_cap << ", max acc allowed is " << acc_cap << std::endl;
+	}
 	//mbedit end
 
 
@@ -1177,26 +1190,26 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 	Thermostat thermostat( temperature, n_dof_temp() );
 	Real init_temp = thermostat.get_temperature( vel_loc, mass() );
 	Real const scale( temperature/init_temp );
-	double max_vel, min_vel, avg_vel;
-	max_vel = min_vel = avg_vel = 0;
+	// double max_vel, min_vel, avg_vel;
+	// max_vel = min_vel = avg_vel = 0;
 
 	for ( core::Size i_dof=1; i_dof<=n_dof(); i_dof++ ) {
 		vel_loc[i_dof] *= scale;
-		if (debug_mode_) {
-			avg_vel += vel_loc[i_dof];
-			if (vel_loc[i_dof] > max_vel) {
-				max_vel = vel_loc[i_dof];
-			}
-			if (vel_loc[i_dof] < min_vel) {
-				min_vel = vel_loc[i_dof];
-			}
-		}
+		// if (debug_mode_) {
+		// 	avg_vel += vel_loc[i_dof];
+		// 	if (vel_loc[i_dof] > max_vel) {
+		// 		max_vel = vel_loc[i_dof];
+		// 	}
+		// 	if (vel_loc[i_dof] < min_vel) {
+		// 		min_vel = vel_loc[i_dof];
+		// 	}
+		// }
 	}
 	
-	if (debug_mode_) {
-		avg_vel = avg_vel/(n_dof());
-		TR << "mb_temp:max_scaled_vel:" << max_vel << ":min_scaled_vel:" << min_vel << ":avg_scaled_vel:" << avg_vel << std::endl;
-	}
+	// if (debug_mode_) {
+	// 	avg_vel = avg_vel/(n_dof());
+	// 	TR << "mb_temp:max_scaled_vel:" << max_vel << ":min_scaled_vel:" << min_vel << ":avg_scaled_vel:" << avg_vel << std::endl;
+	// }
 
 	set_vel( vel_loc );
 	Real init_temp2 = thermostat.get_temperature( vel_loc, mass() );
@@ -1214,19 +1227,19 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 {
 	core::Real const rmsd( core::scoring::CA_rmsd( pose0(), pose ));
 
-	core::scoring::constraints::ConstraintSetCOP cstset( pose.constraint_set() );
+	// core::scoring::constraints::ConstraintSetCOP cstset( pose.constraint_set() );
 	//TR << "Is there CST? " << std::endl;
 	//cstset->show_numbers( TR );
 
 
 
-	timeval currtime;
-#ifndef WIN32
-	gettimeofday(&currtime, nullptr );
-#endif
-	Real elapsedTime = (currtime.tv_sec - inittime_.tv_sec) * 1000.0;
-	elapsedTime += (currtime.tv_usec - inittime_.tv_usec) / 1000.0;
-	elapsedTime /= 60000.0; // in minute
+// 	timeval currtime;
+// #ifndef WIN32
+// 	gettimeofday(&currtime, nullptr );
+// #endif
+// 	Real elapsedTime = (currtime.tv_sec - inittime_.tv_sec) * 1000.0;
+// 	elapsedTime += (currtime.tv_usec - inittime_.tv_usec) / 1000.0;
+// 	elapsedTime /= 60000.0; // in minute
 
 	core::Real Epot( scorefxn()->score( pose ) );
 	// std::cout << "total complex E breakdown:" << std::endl;
@@ -1292,7 +1305,7 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 
 	double unscaled_ligA_intE = 0.12345;
 	double unscaled_ligB_intE = 0.12345;
-	// std::cout << "scale factor for ligA is: " << scaleFactor_A << ", scale factor for ligB is: " << scaleFactor_B << std::endl;
+
 	if (calc_intE_) {
 		proteinscore = calculate_free_receptor_score(pose);
 
@@ -1306,93 +1319,124 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 
 		ligBscore = calculate_free_ligandB_score(pose);
 		utility::vector1<double> temp_e2 = calculate_complexligB_score(pose);
-		// std::cout << "calc intE temp_e2[1]:" << temp_e2[1] << ", temp_e2[2]:" << temp_e2[2] << std::endl;
+
 		complexligB_score = temp_e2[1];
 		ligB_apc = temp_e2[2];
 		ligBinteraction_E = complexligB_score - proteinscore - ligBscore;
 		unscaled_ligB_intE = ligBinteraction_E/scaleFactor_B;
 
-		// std::cout << "mb debug proteinscore is: " << proteinscore
-		//  << ", ligAscore is: " << ligAscore << ", complexligA_score: " << complexligA_score 
-		//  << ", ligBscore: " << ligBscore << ", complexligB_score: " << complexligB_score << std::endl;
 	}
-	// std::cout << "mb debug ligAinteraction_E is: " << ligAinteraction_E << ", ligBinteraction_E is: " << ligBinteraction_E << std::endl;
+
+	//store user entered logfile path/file name
+	std::string logfile_path = option[ basic::options::OptionKeys::md::md_outfile_name ];
+	// std::cout << "logfile path is: " << logfile_path << std::endl;
+	//check if the logfile exists already; if not, create it and write to it & if so, append to it
+	std::ofstream ofs; //create outfile writer
+	std::ifstream file(logfile_path); //returns true if file exists and is accessible
+	if ( file.good() ) {
+		// std::cout << "logfile exists!" << std::endl;
+		ofs.open(logfile_path, std::ios::app);
+		// ofs << "logfile exists so this line gets append. \n";
+	} else {
+		// std::cout << "logfile doesnt exist, writing to." << std::endl;
+		ofs.open(logfile_path, std::ofstream::out);
+		// ofs << "logfile doesnt exist so this gets written at the top. \n";
+	}
+	
 
 	//TR if header_on_ true, print this one time header; else just do the values.
 	if ( header_on_ ) {
-		TR << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
-		
+		// TR << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
+		ofs << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
+
 		if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-			TR << " apc";
+			// TR << " apc";
+			ofs << " apc";
 		}
 
 		if ( (*scorefxn())[ core::scoring::coordinate_constraint ] != 0.0 ) {
-			TR << " coordcst";
+			// TR << " coordcst";
+			ofs << " coordcst";
 		}
 
 		if (calc_intE_) {
-			TR << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
+			// TR << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
+			ofs << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
+
 		}
 		
-		TR << " time total_e temp rmsd:";
+		// TR << " time total_e temp rmsd";
+		ofs << " time total_e temp rmsd\n";
 	}
 
 	//TR block to output the information; first pose then resi specific
-	TR << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
+	// TR << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
+	ofs << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
 	
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-		TR << " " << apc;
+		// TR << " " << apc;
+		ofs << " " << apc;
 	}
 
 	if ( (*scorefxn())[ core::scoring::coordinate_constraint ] != 0.0 ) {
-		TR << " " << coordcst;
+		// TR << " " << coordcst;
+		ofs << " " << coordcst;
 	}
 
 	if (calc_intE_) {
-		TR << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
+		// TR << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
+		ofs << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
 	}
 	
-	TR << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd << ":";
+	// TR << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd;
+	ofs << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd;
 	
-	core::Real rmsd_native( 0.0 ), gdttm_native( 0.0 ), gdtha_native( 0.0 );
-	if ( native_given_ ) {
-		rmsd_native = core::scoring::CA_rmsd( pose, native_, native_resmap_ );
-		core::scoring::CA_gdttm( pose, native_, gdttm_native, gdtha_native, native_resmap_ );
+	// core::Real rmsd_native( 0.0 ), gdttm_native( 0.0 ), gdtha_native( 0.0 );
+	// if ( native_given_ ) {
+	// 	rmsd_native = core::scoring::CA_rmsd( pose, native_, native_resmap_ );
+	// 	core::scoring::CA_gdttm( pose, native_, gdttm_native, gdtha_native, native_resmap_ );
 
-		TR << ", RMSD/GDTtoNative ";
-		TR << std::setw(8) << std::setprecision(4) << rmsd_native;
-		TR << std::setw(8) << std::setprecision(4) << gdttm_native;
-		TR << std::setw(8) << std::setprecision(4) << gdtha_native;
-	}
+	// 	TR << ", RMSD/GDTtoNative ";
+	// 	TR << std::setw(8) << std::setprecision(4) << rmsd_native;
+	// 	TR << std::setw(8) << std::setprecision(4) << gdttm_native;
+	// 	TR << std::setw(8) << std::setprecision(4) << gdtha_native;
+	// 	ofs << ", RMSD/GDTtoNative ";
+	// 	ofs << std::setw(8) << std::setprecision(4) << rmsd_native;
+	// 	ofs << std::setw(8) << std::setprecision(4) << gdttm_native;
+	// 	ofs << std::setw(8) << std::setprecision(4) << gdtha_native;
+	// }
 
-	core::Real Eobj( scorefxn_obj()->score( pose ) );
-	TR << "Eobj: " << Eobj << " Emin_obj: " << Emin_obj() ;
-	TR << std::endl;
+	// core::Real Eobj( scorefxn_obj()->score( pose ) );
+	// TR << "Eobj: " << Eobj << " Emin_obj: " << Emin_obj() ;
+	// ofs << "Eobj: " << Eobj << " Emin_obj: " << Emin_obj() ;
+	// TR << std::endl; //final TR line ends here
+	ofs << "\n";
+	ofs.close(); //logfile gets closed here.
 
-	if ( cummulative_time() > 0.1 && // Truncate initial 1ps to remove minimization memory
-			selectmode() == "minobj" && Eobj < Emin_obj() ) {
-		set_pose_minobj( pose );
-		set_Emin_obj( scorefxn_obj()->score( pose ) );
-		set_time_minobj(  cummulative_time() );
-		TR << "Updating minimum objective score value / pose at time " << cummulative_time() << std::endl;
-	}
+	// if ( cummulative_time() > 0.1 && // Truncate initial 1ps to remove minimization memory
+	// 		selectmode() == "minobj" && Eobj < Emin_obj() ) {
+	// 	set_pose_minobj( pose );
+	// 	set_Emin_obj( scorefxn_obj()->score( pose ) );
+	// 	set_time_minobj(  cummulative_time() );
+	// 	TR << "Updating minimum objective score value / pose at time " << cummulative_time() << std::endl;
+	// }
 
-	// Store trj
-	if ( report_trj && store_trj() ) {
-		//CartesianMinimizerMap min_map;
-		//min_map.setup( pose, *movemap() );
+	// // Store trj
+	// if ( report_trj && store_trj() ) {
+	// 	//CartesianMinimizerMap min_map;
+	// 	//min_map.setup( pose, *movemap() );
 
-		Multivec xyz_loc( min_map.ndofs() );
-		min_map.copy_dofs_from_pose( pose, xyz_loc );
-		add_trj( xyz_loc );
-		if ( report_as_silent() ) {
-			if ( native_given_ ) {
-				report_silent( pose, rmsd, gdttm_native, gdtha_native );
-			} else {
-				report_silent( pose );
-			}
-		}
-	}
+	// 	Multivec xyz_loc( min_map.ndofs() );
+	// 	min_map.copy_dofs_from_pose( pose, xyz_loc );
+	// 	add_trj( xyz_loc );
+	// 	if ( report_as_silent() ) {
+	// 		if ( native_given_ ) {
+	// 			report_silent( pose, rmsd, gdttm_native, gdtha_native );
+	// 		} else {
+	// 			report_silent( pose );
+	// 		}
+	// 	}
+	// }
 
 	/*
 	std::stringstream ss;
@@ -1421,7 +1465,7 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	std::cout << std::endl;
 	}
 	*/
-}
+} //end of report_MD()
 
 // pose_ref should have exactly same molecule as stored in trj
 utility::vector1< pose::Pose >
