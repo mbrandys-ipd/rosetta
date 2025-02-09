@@ -972,6 +972,13 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 
 	// Here, convert force into acceleration
 	// and integrate remaining half of velocity
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+
+	bool cap_on = option[basic::options::OptionKeys::md::cap_movements]; //default false
+	Real vel_cap = option[basic::options::OptionKeys::md::max_vel]; //default 10.0
+	Real acc_cap = option[basic::options::OptionKeys::md::max_acc]; //default 3e3
+
 	for ( core::Size i_dof = 1; i_dof <= n_dof(); ++i_dof ) {
 		core::Size i_atm = (i_dof+2)/3;
 		
@@ -1001,27 +1008,27 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 
 		// }
 		// std::cout << "mb debug loop(acc/vel from force loop), iatm: " << i_atm << " idof: " << i_dof << " force[idof]: " << force[i_dof] << std::endl;
-		acc_loc[i_dof] = -MDForceFactor*force[i_dof]/mass(i_atm); // this would be a good place to do a cap squash - dbeck
+
+		acc_loc[i_dof] = -MDForceFactor*force[i_dof]/mass(i_atm); 
 		vel_loc[i_dof] += 0.5*acc_loc[i_dof]*dt();
-
-		//mbedit cap logic:
-		using namespace basic::options;
-		using namespace basic::options::OptionKeys;
-
-		bool cap_on = option[basic::options::OptionKeys::md::cap_movements]; //default false
-		Real vel_cap = option[basic::options::OptionKeys::md::max_vel]; //default 10.0
-		Real acc_cap = option[basic::options::OptionKeys::md::max_acc]; //default 3e3
 
 		if (cap_on) {
 			if (vel_loc[i_dof] > vel_cap) {
 				vel_loc[i_dof] = vel_cap;
 			}
 
+			if (vel_loc[i_dof] < (vel_cap * -1.0)) {
+				vel_loc[i_dof] = (vel_cap * -1.0);
+			}
+
 			if (acc_loc[i_dof] > acc_cap) {
 				acc_loc[i_dof] = acc_cap;
 			}
+
+			if (acc_loc[i_dof] < (acc_cap * -1.0)) {
+				acc_loc[i_dof] = (acc_cap * -1.0);
+			}
 		}
-		//mbedit cap logic end
 
 		// if (debug_mode_) {
 		// 	// //get values related to delta variables now that it's post-calculation/post-cap code
@@ -1122,7 +1129,7 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 	Real acc_cap = option[basic::options::OptionKeys::md::max_acc]; //default 3e3
 
 	if (cap_on) {
-		TR << "capping is on; max vel allowed is " << vel_cap << ", max acc allowed is " << acc_cap << std::endl;
+		TR << "capping on: max/min vel = " << vel_cap << "/" << (vel_cap * -1.0) << ", max/min acc = " << acc_cap << "/" << (acc_cap * -1.0) << std::endl;
 	}
 	//mbedit end
 
@@ -1149,6 +1156,10 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 		if ( cap_on ) {
 			if (vel_loc[i_dof] > vel_cap) {
 				vel_loc[i_dof] = vel_cap;
+			}
+
+			if (vel_loc[i_dof] < (vel_cap * -1.0)) {
+				vel_loc[i_dof] = (vel_cap * -1.0);
 			}
 		}
 		//mbedit end
