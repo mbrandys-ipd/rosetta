@@ -1104,7 +1104,7 @@ GenericBondedPotential::residue_pair_energy(
 	emap[ gen_bonded_angle ]   += E_angle;
 	emap[ gen_bonded_torsion ] += E_torsion;
 	emap[ gen_bonded_improper ] += E_improper;
-
+// add lambda scaling here just to emap[ gen_bonded]
 }
 
 // derivatives (1b)
@@ -1134,6 +1134,7 @@ GenericBondedPotential::residue_derivatives(
 	eval_residue_energy_and_derivative_angle( rsd, atom_derivs, weights[ gen_bonded ] + weights[ gen_bonded_angle ], true );
 	eval_residue_energy_and_derivative_torsion( rsd, atom_derivs, rsd_excl_info, weights[ gen_bonded ] + weights[ gen_bonded_torsion ], true );
 	eval_residue_energy_and_derivative_improper( rsd, atom_derivs, rsd_excl_info, weights[ gen_bonded ] + weights[ gen_bonded_improper ], true );
+//try modifying stuff here becase atom_derivs containts f1s/f2s; might only need to adjust deriv torsion and not the others.
 }
 
 // derivatives (2b)

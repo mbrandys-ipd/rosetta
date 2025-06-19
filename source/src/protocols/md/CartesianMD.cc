@@ -10,7 +10,7 @@
 /// @file    protocols/md/CartesianMD.cc
 /// @brief   Cartesian Mover based MD-sim; capable of running FEP simulations and calculations with flag -fep_on true
 /// @details
-/// @author  Hahnbeom Park, Marisa Brandys
+/// @author  Hahnbeom Park, FEP-architecture by Marisa Brandys
 
 #include <protocols/md/CartesianMDCreator.hh>
 #include <protocols/md/CartesianMD.hh>
@@ -590,7 +590,7 @@ void CartesianMD::apply( core::pose::Pose & pose ) {
 	}
 	
 	if ( report_scorecomp() ) scorefxn()->show( TR, pose );
-	TR << "MD Done! " << std::endl;
+	// TR << "MD Done! " << std::endl;
 }
 
 
@@ -618,21 +618,12 @@ CartesianMD::calculate_free_receptor_score(
 	core::pose::Pose pose //this needs to be the pose with protein-ligA-ligB
 )
 {
-	// delete ligand (modifying fxn from GALigandDock.cc version)
-	core::Size lastres = pose.total_residue(); //because my ligand is the last residue
+	// delete ligands (modifying fxn from GALigandDock.cc version)
+	core::Size lastres = pose.total_residue(); //ligandB is presumed to be final ligand, and ligandA penultimate
 	pose.delete_residue_range_slow( (lastres - 1), lastres );
 
-	//mbedit - using this to confirm i deleted ligand
-	// std::stringstream ss_mar2;
-	// ss_mar2 << "noLigand.pdb";
-	// pose.dump_pdb( ss_mar2.str() );
-	//mbedit end
-
-	// get sum of just lambda-scaled e-terms
+	// scoring free protein to return as protein-only-energies
 	core::Real total_E ( scorefxn()->score( pose ) );
-
-	// std::cout << "protein score breakdown:" << std::endl; // debugging
-	// scorefxn()->show( pose ); //for debugging
 	
 	return total_E; 
 
@@ -643,6 +634,24 @@ CartesianMD::calculate_free_ligandA_score(
 	core::pose::Pose pose_ref //this needs to be the pose with protein-ligA-ligB
 )
 {
+	core::Size ligA_resnum = ( pose_ref.total_residue() - 1 ); //ligA is presumed to be the second-to-last residue
+
+	//copying just ligA into a pose pointer 'pose'; logic borrowed from GALigandDock
+	core::pose::PoseOP pose( new core::pose::Pose );
+    pose->append_residue_by_jump( pose_ref.residue(ligA_resnum), 0);
+	core::pose::initialize_disulfide_bonds( *pose );
+
+	core::Real total_E ( scorefxn()->score( *pose ) ); //scoring ligA alone to return for 'free' ligandA energy
+
+	return total_E; 
+}
+
+void
+CartesianMD::dump_ligA(
+	core::pose::Pose pose_ref,
+	core::Size istep 
+)
+{
 	// just get ligand (modifying fxn from GALigandDock.cc version)
 	core::Size ligA_resnum = ( pose_ref.total_residue() - 1 );
 
@@ -650,22 +659,36 @@ CartesianMD::calculate_free_ligandA_score(
     pose->append_residue_by_jump( pose_ref.residue(ligA_resnum), 0);
 	core::pose::initialize_disulfide_bonds( *pose );
 
-	// //mbedit confirming i have just ligand
-	// std::stringstream ss_mar2;
-	// ss_mar2 << "justLigandA.pdb";
-	// pose->dump_pdb( ss_mar2.str() );
-	// //mbedit end
 
-	// get sum of just lambda-scaled e-terms
-	core::Real total_E ( scorefxn()->score( *pose ) );
-	
-	return total_E;
-
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	std::stringstream ss_mar;
+	std::string mar_name = option[out::prefix];
+	ss_mar << mar_name << "_ligA_n" << istep << ".pdb";
+	pose->dump_pdb( ss_mar.str() );
 }
 
 Real
 CartesianMD::calculate_free_ligandB_score(
 	core::pose::Pose pose_ref //this needs to be the pose with protein-ligA-ligB
+)
+{
+	// presumes ligandB is last residue (modifying fxn from GALigandDock.cc version)
+	core::Size ligB_resnum = pose_ref.total_residue();
+
+	core::pose::PoseOP pose( new core::pose::Pose );
+    pose->append_residue_by_jump( pose_ref.residue(ligB_resnum), 0);
+	core::pose::initialize_disulfide_bonds( *pose );
+
+	core::Real total_E ( scorefxn()->score( *pose ) ); //energy of free ligand B
+
+	return total_E; 
+}
+
+void
+CartesianMD::dump_ligB(
+	core::pose::Pose pose_ref,
+	core::Size istep 
 )
 {
 	// just get ligand (modifying fxn from GALigandDock.cc version)
@@ -675,17 +698,12 @@ CartesianMD::calculate_free_ligandB_score(
     pose->append_residue_by_jump( pose_ref.residue(ligB_resnum), 0);
 	core::pose::initialize_disulfide_bonds( *pose );
 
-	// //mbedit confirming i have just ligand
-	// std::stringstream ss_mar2;
-	// ss_mar2 << "justLigandB.pdb";
-	// pose->dump_pdb( ss_mar2.str() );
-	// //mbedit end
-
-	// get sum of just lambda-scaled e-terms
-	core::Real total_E ( scorefxn()->score( *pose ) );
-	
-	return total_E;
-
+	using namespace basic::options;
+	using namespace basic::options::OptionKeys;
+	std::stringstream ss_mar;
+	std::string mar_name = option[out::prefix];
+	ss_mar << mar_name << "_ligB_n" << istep << ".pdb";
+	pose->dump_pdb( ss_mar.str() );
 }
 
 utility::vector1<double>
@@ -694,18 +712,39 @@ CartesianMD::calculate_complexligA_score(
 )
 {
 	
-	core::Size ligB_resnum = pose.total_residue(); //removes ligB
-	pose.delete_residue_slow( ligB_resnum ); 
-
-	//get just the protein - ligA interaction energy
-	core::Real complex_energy ( scorefxn()->score( pose ) );
+	core::Size ligB_resnum = pose.total_residue(); 
+	core::Real dihed_E = 0.0;
 	core::Real apc = 0.0;
+	
+	// if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+	// 	dihed_E = pose.energies().total_energies_weighted()[ core::scoring::dihedral_constraint ];
+	// }
+
+	// if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
+	// 	apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
+	// }
+
+	// TR << "mb debug: calculate_complexligA_score() TR, start of fxn dihedral energy from fxn input pose:" << dihed_E << ", start of fxn apc energy from input pose:" << apc;
+
+	pose.delete_residue_slow( ligB_resnum ); //removes ligB which is presumed to be last residue
+
+	core::Real complex_energy ( scorefxn()->score( pose ) ); //pose is now just a protein-ligA complex; here this is all the energies associated with protein, ligA, and their interactions
+	
+	//dihedral energy is presumed to only be on ligands; here dihed_E becomes ligA only dihedral cst energy
+	if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+		dihed_E = pose.energies().total_energies_weighted()[ core::scoring::dihedral_constraint ];
+	}
+
+	//apc is atom pair cst energy total in the protein-ligA complex; if apc is only defined between protein and ligA, dividing this by 2 will give ligA specific apc
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
 		apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
 	}
-	// std::cout << "within complex ligA calc fxn, complex_energy without apc: " << complex_energy << ", apc: " << apc << std::endl;
-	complex_energy = complex_energy - apc;
-	utility::vector1<double> energies = {complex_energy,apc};
+
+	// TR << ", dihedral energy on pose-ligA: " << dihed_E << ", apc energy on pose-ligA:" << apc << ", complex energy (with apc):" << complex_energy;
+
+	// TR << ", complex energy (minus apc):" << complex_energy << std::endl;
+
+	utility::vector1<double> energies = {complex_energy,apc,dihed_E};
 
 	return energies; 
 
@@ -717,24 +756,41 @@ CartesianMD::calculate_complexligB_score(
 )
 {
 	
-	core::Size ligA_resnum = (pose.total_residue() - 1); //removes ligB
-	pose.delete_residue_slow( ligA_resnum ); 
-
-	// //mbedit - using this to confirm i deleted ligandA only
-	// std::stringstream ss_mar2;
-	// ss_mar2 << "protein-ligB_complex.pdb";
-	// pose.dump_pdb( ss_mar2.str() );
-	// //mbedit end
-
-	//get just the protein - ligA interaction energy
-	core::Real complex_energy ( scorefxn()->score( pose ) );
+	core::Size ligA_resnum = (pose.total_residue() - 1);
+	core::Real dihed_E = 0.0;
 	core::Real apc = 0.0;
+	
+	// if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+	// 	dihed_E = pose.energies().total_energies_weighted()[ core::scoring::dihedral_constraint ];
+	// }
+
+	// if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
+	// 	apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
+	// }
+
+	// TR << "mb debug: calculate_complexligB_score() TR, start of fxn dihedral energy from fxn input pose:" << dihed_E << ", start of fxn apc energy from input pose:" << apc;
+
+	pose.delete_residue_slow( ligA_resnum ); //removes ligA whcih is presumed to be penultimate residue
+
+	core::Real complex_energy ( scorefxn()->score( pose ) );
+
+	//it is presumed dihedral csts are only on ligands; here dihed_E is ligB only dihedral cst energy
+	if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+		dihed_E = pose.energies().total_energies_weighted()[ core::scoring::dihedral_constraint ];
+	}
+
+	//apc is atom pair constraint energy of protein-ligB; if apc is only defined for protein-lig then dividing this by two gives ligB only apc
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
 		apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
 	}	
-	// std::cout << "within complex ligB calc fxn, complex_energy without apc: " << complex_energy << ", apc: " << apc << std::endl;
-	complex_energy = complex_energy - apc;
-	utility::vector1<double> energies = {complex_energy,apc};
+	
+	// TR << ", dihedral energy on pose-ligB: " << dihed_E << ", apc energy on pose-ligB:" << apc << ", complex energy (with apc):" << complex_energy;
+
+	// complex_energy = complex_energy - apc;
+
+	// TR << ", complex energy (minus apc):" << complex_energy << std::endl;
+
+	utility::vector1<double> energies = {complex_energy,apc,dihed_E};
 
 	return energies; 
 
@@ -784,22 +840,12 @@ void CartesianMD::do_MD( core::pose::Pose & pose,
 	scorefxn()->setup_for_minimizing( pose, min_map );
 	for ( core::Size istep = 1; istep <= nstep; istep++ ) {
 		set_cummulative_time( cummulative_time() + dt() );
-		// Dump pdb
-		if ( istep%dumpstep_ == 0 ) {
 
-			using namespace basic::options;
-			using namespace basic::options::OptionKeys;
-
-			float marTime = static_cast<float>(cummulative_time());
-			std::stringstream ss_mar;
-			std::string mar_name = option[out::prefix];
-			ss_mar << mar_name << "_" << marTime << "ps.pdb";
-			pose.dump_pdb( ss_mar.str() );
-		}
-		
-		// Report
-		if ( istep%report_step() == 0 ) {
-			report_MD( pose, min_map, false, istep); // if 3rd item is true, then including trajectory
+		//dump ligands to check conformational overlap over sim - hardcoded for now, make flag later (TO DO)
+		core::Size lig_dumpstep = 7000;
+		if ( istep%lig_dumpstep == 0 ) {
+			dump_ligA( pose, istep );
+			dump_ligB( pose, istep );
 		}
 
 		bool update_score( false );
@@ -846,11 +892,31 @@ void CartesianMD::do_MD( core::pose::Pose & pose,
 		}
 		//TR << "v2avrg/Temp/Temp2: " << std::sqrt(v2sum/vel_.size()) << " " << temperature << " " << temperature_ << std::endl;
 		set_kinetic_energy( 0.5*temperature()*n_dof()*GasConst );
+		
+		// Report scoreterms to dat file
+		// TR << "mb debug (end of loop): nstep " << istep << std::endl;
+		if ( istep%report_step() == 0 ) {
+			report_MD( pose, min_map, false, istep); // if 3rd item is true, then including trajectory
+		}
+
+		// Dump pdb
+		if ( istep%dumpstep_ == 0 ) {
+
+			using namespace basic::options;
+			using namespace basic::options::OptionKeys;
+
+			float marTime = static_cast<float>(cummulative_time());
+			std::stringstream ss_mar;
+			std::string mar_name = option[out::prefix];
+			ss_mar << mar_name << "_" << marTime << "ps.pdb";
+			pose.dump_pdb( ss_mar.str() );
+		}
 
 	}
 	// TR << "do MD: minmap copy dofs starts (do_MD ends statement is just after.)" << std::endl;
 	min_map.copy_dofs_to_pose( pose, xyz() );
-	// TR << "do_MD ends." << std::endl;
+
+	TR << "do_MD ends." << std::endl;
 }
 
 void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
@@ -1225,7 +1291,7 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 	set_vel( vel_loc );
 	Real init_temp2 = thermostat.get_temperature( vel_loc, mass() );
 
-	TR << "mb_temp: initial temp after initial velocities chosen " << init_temp;
+	TR << "md_temp: initial temp after initial velocities chosen " << init_temp;
 	TR << ", scaling down by factor " << scale << ". ";
 	TR << "After scaling, init temp of system is now: " << init_temp2 << std::endl;
 	// std::cout << "init vel:" << vel_loc << std::endl; //for debugging, comment out otherwise
@@ -1261,8 +1327,10 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	core::Real cb_length ( pose.energies().total_energies_weighted()[ core::scoring::cart_bonded_length ] );
 	core::Real cb_torsion ( pose.energies().total_energies_weighted()[ core::scoring::cart_bonded_torsion ] );
 	core::Real fa_rep ( pose.energies().total_energies_weighted()[ core::scoring::fa_rep ] );
+	core::Real fa_elec ( pose.energies().total_energies_weighted()[ core::scoring::fa_elec ] );
 	core::Real apc = 0;
 	core::Real coordcst = 0;
+	core::Real dihed_E = 0;
 	if ( (*scorefxn())[ core::scoring::coordinate_constraint ] != 0.0 ) {
 		coordcst = pose.energies().total_energies_weighted()[ core::scoring::coordinate_constraint ];
 	}
@@ -1270,6 +1338,10 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
 		 apc = pose.energies().total_energies_weighted()[ core::scoring::atom_pair_constraint ];
 	}
+
+	if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+		dihed_E = pose.energies().total_energies_weighted()[ core::scoring::dihedral_constraint ];
+    }
 
 	core::Real fa_atr ( pose.energies().total_energies_weighted()[ core::scoring::fa_atr ] );
 	core::Real fa_sol ( pose.energies().total_energies_weighted()[ core::scoring::fa_sol ] );
@@ -1288,15 +1360,24 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	core::Real hbond_bb_sc ( pose.energies().total_energies_weighted()[ core::scoring::hbond_bb_sc ] );
 	core::Real hbond_sc ( pose.energies().total_energies_weighted()[ core::scoring::hbond_sc ] );
 
+	core::Real gbonded ( pose.energies().total_energies_weighted()[ core::scoring::gen_bonded ] );
+
 	
-	// Getting interaction energies:
-	core::Real proteinscore = 0.12345; //made this a weirdly suspicious number so that if somethings off, odds are I'll see it while debugging
+	// intializing interaction energy calc components; setting to suspicious numbers so that they stick out in debugging easier
+	core::Real proteinscore = 0.12345;
+
 	core::Real ligAscore = 0.12345;
 	core::Real ligBscore = 0.12345;
+
 	core::Real complexligA_score = 0.12345;
-	core::Real ligA_apc = 0.12345;
-	core::Real ligB_apc = 0.12345;
 	core::Real complexligB_score = 0.12345;
+
+	core::Real complexligA_apc = 0.12345;
+	core::Real complexligB_apc = 0.12345;
+
+	core::Real ligA_dihed_E = 0.12345;
+	core::Real ligB_dihed_E = 0.12345;
+
 	core::Real ligAinteraction_E = 0.12345; 
 	core::Real ligBinteraction_E = 0.12345;
 
@@ -1317,23 +1398,33 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	double unscaled_ligA_intE = 0.12345;
 	double unscaled_ligB_intE = 0.12345;
 
-	if (calc_intE_) {
+	if (calc_intE_) {	
+		//this block calculates the protein:ligand interaction energy for ligA and ligB
 		proteinscore = calculate_free_receptor_score(pose);
 
+		//lig A related calculations
 		ligAscore = calculate_free_ligandA_score(pose);
+
+		// calculate_complexligA_score returns vector {complex_energy,apc,dihed_E};
 		utility::vector1<double> temp_e1 = calculate_complexligA_score(pose);
-		// std::cout << "calc intE temp_e1[1]:" << temp_e1[1] << ", temp_e1[2]:" << temp_e1[2] << std::endl;
 		complexligA_score = temp_e1[1];
-		ligA_apc = temp_e1[2];
-		ligAinteraction_E = complexligA_score - proteinscore - ligAscore;
+		complexligA_apc = temp_e1[2];
+		ligA_dihed_E = temp_e1[3]; //this assumes the only dihedral csts in the system are on ligands
+
+		ligAinteraction_E = (complexligA_score - complexligA_apc - ligA_dihed_E) - proteinscore - ligAscore;
+		// TR << "mb debug, prot-ligA complex energy:" << complexligA_score << ", free protein:" << proteinscore << ", free ligA score:" << ligAscore << ", ligAinteraction_E (scaled):" << ligAinteraction_E << ", cc:" << coordcst << ", total apc:" << apc << ", complexligA_apc:" << complexligA_apc << ", total dihed E:" << dihed_E << ", ligA_dihed_E:" << ligA_dihed_E << std::endl;
 		unscaled_ligA_intE = ligAinteraction_E/scaleFactor_A;
 
+		//lig B related calculations
 		ligBscore = calculate_free_ligandB_score(pose);
+		
 		utility::vector1<double> temp_e2 = calculate_complexligB_score(pose);
-
 		complexligB_score = temp_e2[1];
-		ligB_apc = temp_e2[2];
-		ligBinteraction_E = complexligB_score - proteinscore - ligBscore;
+		complexligB_apc = temp_e2[2];
+		ligB_dihed_E = temp_e2[3];
+
+		ligBinteraction_E = (complexligB_score - complexligB_apc - ligB_dihed_E) - proteinscore - ligBscore;
+		// TR << "mb debug, prot-ligB complex energy:" << complexligB_score << ", free protein:" << proteinscore << ", free ligB score:" << ligBscore << ", ligBinteraction_E (scaled):" << ligBinteraction_E << ", cc:" << coordcst << ", total apc:" << apc << ", complexligB_apc:" << complexligB_apc << ", total dihed E:" << dihed_E << ", ligB_dihed_E:" << ligB_dihed_E << std::endl;
 		unscaled_ligB_intE = ligBinteraction_E/scaleFactor_B;
 
 	}
@@ -1345,62 +1436,49 @@ void CartesianMD::report_MD( core::pose::Pose &pose,
 	std::ofstream ofs; //create outfile writer
 	std::ifstream file(logfile_path); //returns true if file exists and is accessible
 	if ( file.good() ) {
-		// std::cout << "logfile exists!" << std::endl;
 		ofs.open(logfile_path, std::ios::app);
-		// ofs << "logfile exists so this line gets append. \n";
 	} else {
-		// std::cout << "logfile doesnt exist, writing to." << std::endl;
 		ofs.open(logfile_path, std::ofstream::out);
-		// ofs << "logfile doesnt exist so this gets written at the top. \n";
 	}
 	
-
-	//TR if header_on_ true, print this one time header; else just do the values.
+	//if header_on_ true, print this one time header; else just do the values.
 	if ( header_on_ ) {
-		// TR << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
-		ofs << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
-
+		ofs << "md_labels nstep cb_ang cb_len cb_tor fa_rep fa_atr fa_sol fa_elec lkb lkbi lkbb lkbbu fa_dun_dev fa_dun_rot fa_dun_semi hb_sr_bb hb_lr_bb hb_bb_sc hb_sc";
 		if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-			// TR << " apc";
 			ofs << " apc";
 		}
-
 		if ( (*scorefxn())[ core::scoring::coordinate_constraint ] != 0.0 ) {
-			// TR << " coordcst";
 			ofs << " coordcst";
 		}
-
-		if (calc_intE_) {
-			// TR << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
-			ofs << " unscaled_ligA_intE unscaled_ligB_intE ligA_apc ligB_apc";
-
+		if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+			ofs << " dihedE";
 		}
-		
-		// TR << " time total_e temp rmsd";
-		ofs << " time total_e temp rmsd\n";
+		if (calc_intE_) {
+			ofs << " unscaled_ligA_intE unscaled_ligB_intE complexligA_apc complexligB_apc ligA_dihedE ligB_dihedE";
+		}
+		ofs << " time total_e temp rmsd gbonded\n";
 	}
 
-	//TR block to output the information; first pose then resi specific
-	// TR << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
-	ofs << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
+	ofs << istep << " " << cb_angle << " " << cb_length << " " << cb_torsion << " " << fa_rep << " " << fa_atr << " " << fa_sol << " " << fa_elec << " " << lk_ball << " " << lk_ball_iso << " " << lk_ball_bridge << " " << lk_ball_bridge_uncpl << " " << fa_dun_dev << " " << fa_dun_rot << " " << fa_dun_semi << " " << hbond_sr_bb << " " << hbond_lr_bb << " " << hbond_bb_sc << " " << hbond_sc;
 	
 	if ( (*scorefxn())[ core::scoring::atom_pair_constraint ] != 0.0 ) {
-		// TR << " " << apc;
 		ofs << " " << apc;
 	}
 
 	if ( (*scorefxn())[ core::scoring::coordinate_constraint ] != 0.0 ) {
-		// TR << " " << coordcst;
 		ofs << " " << coordcst;
 	}
 
+	if ( (*scorefxn())[ core::scoring::dihedral_constraint ] != 0.0 ) {
+		ofs << " " << dihed_E;
+	}
+
 	if (calc_intE_) {
-		// TR << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
-		ofs << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << ligA_apc << " " << ligB_apc;
+		ofs << " " << unscaled_ligA_intE << " " << unscaled_ligB_intE << " " << complexligA_apc << " " << complexligB_apc << " " << ligA_dihed_E << " " << ligB_dihed_E;
 	}
 	
 	// TR << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd;
-	ofs << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd;
+	ofs << " " << cummulative_time() << " " << Epot << " " << temperature() << " " << rmsd << " " << gbonded;
 	
 	// core::Real rmsd_native( 0.0 ), gdttm_native( 0.0 ), gdtha_native( 0.0 );
 	// if ( native_given_ ) {
