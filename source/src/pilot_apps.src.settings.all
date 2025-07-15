@@ -671,7 +671,8 @@ sources = {
 		#"score_test",
 	],
 	"pilot/mbrandys" : [
-		"md_init_pose"
+		"md_init_pose",
+		"min_test",
 	],
 	"pilot/mdsmith" : [
 		#"ligand_motifs",
