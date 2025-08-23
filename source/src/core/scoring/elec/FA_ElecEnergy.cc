@@ -537,23 +537,25 @@ FA_ElecEnergy::residue_pair_energy(
 			score *= 0.0;
 			// std::cout << "mb debug residue_pair_energy, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
 		} else {
-			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
-				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-				if ( elec_scale_factor == 0.0 ) {
-					elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+			if ( ! (option[ basic::options::OptionKeys::md::fep_min ]) ) {	
+				if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+					double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+					if ( elec_scale_factor == 0.0 ) {
+						elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					score *= elec_scale_factor;
+					// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
 				}
-				score *= elec_scale_factor;
-				// std::cout << "mb debug residue_pair_energy pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
-			}
 
-			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
-				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-				elec_scale_factor = 1.0 - elec_scale_factor;
-				if ( elec_scale_factor == 0.0 ) {
-					elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+				if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+					double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+					elec_scale_factor = 1.0 - elec_scale_factor;
+					if ( elec_scale_factor == 0.0 ) {
+						elec_scale_factor = 1e-9; //if scale factor would 0 out energy, instead make it tiny; then we can get unscaled intE in fep md protocol (there we divide by scale_factor!)
+					}
+					score *= elec_scale_factor;
+					// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
 				}
-				score *= elec_scale_factor;
-				// std::cout << "mb debug residue_pair_energy pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
 			}
 		}
 	}
@@ -723,17 +725,19 @@ FA_ElecEnergy::residue_pair_energy_ext(
 			score *= 0.0;
 			// std::cout << "mb debug residue_pair_energy_ext, rsd1 and rsd2 are both the lig of interest; score = " << score << std::endl; //debug
 		} else {
-			if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
-				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-				score *= elec_scale_factor;
-				// std::cout << "mb debug residue_pair_energy_ext pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
-			}
+			if ( ! (option[ basic::options::OptionKeys::md::fep_min ]) ) {	
+				if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+					double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+					score *= elec_scale_factor;
+					// std::cout << "mb debug residue_pair_energy_ext pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+				}
 
-			if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
-				double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-				elec_scale_factor = 1 - elec_scale_factor;
-				score *= elec_scale_factor;
-				// std::cout << "mb debug residue_pair_energy_ext pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+				if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+					double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+					elec_scale_factor = 1 - elec_scale_factor;
+					score *= elec_scale_factor;
+					// std::cout << "mb debug residue_pair_energy_ext pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+				}
 			}
 		}
 	}
@@ -895,19 +899,21 @@ FA_ElecEnergy::eval_residue_pair_derivatives(
 					f2s *= 0;
 					// std::cout << "mb debug eval_residue_pair_derivatives, rsd1 and rsd2 are both the lig of interest; f1s/f2s * 0" << std::endl; //debug
 				} else {
-					if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
-						double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-						f1s *= elec_scale_factor;
-						f2s *= elec_scale_factor;
-						// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
-					}
+					if ( ! (option[ basic::options::OptionKeys::md::fep_min ]) ) {	
+						if ( ((rsd1.name() == ligA) && !rsd2.is_ligand()) || ((rsd2.name() == ligA) && !rsd1.is_ligand()) ) {
+							double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+							f1s *= elec_scale_factor;
+							f2s *= elec_scale_factor;
+							// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligA-prot/prot-ligA rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligA:" << ligA << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+						}
 
-					if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
-						double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
-						elec_scale_factor = 1 - elec_scale_factor;
-						f1s *= elec_scale_factor;
-						f2s *= elec_scale_factor;
-						// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+						if ( ((rsd1.name() == ligB) && !rsd2.is_ligand()) || ((rsd2.name() == ligB) && !rsd1.is_ligand()) ) {
+							double elec_scale_factor = option[ corrections::score::elec_md_scale_factor ];
+							elec_scale_factor = 1 - elec_scale_factor;
+							f1s *= elec_scale_factor;
+							f2s *= elec_scale_factor;
+							// std::cout << "mb debug eval_residue_pair_derivatives pair should be ligB-prot/prot-ligB rsd1:" << rsd1.name() << ":rsd2:" << rsd2.name() << " ligB:" << ligB << " scale_factor: " << elec_scale_factor << std::endl; //debugging
+						}
 					}
 				}
 			}
