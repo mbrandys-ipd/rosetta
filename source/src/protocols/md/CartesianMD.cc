@@ -841,13 +841,6 @@ void CartesianMD::do_MD( core::pose::Pose & pose,
 	for ( core::Size istep = 1; istep <= nstep; istep++ ) {
 		set_cummulative_time( cummulative_time() + dt() );
 
-		//dump ligands to check conformational overlap over sim - hardcoded for now, make flag later (TO DO)
-		core::Size lig_dumpstep = 7000;
-		if ( istep%lig_dumpstep == 0 ) {
-			dump_ligA( pose, istep );
-			dump_ligB( pose, istep );
-		}
-
 		bool update_score( false );
 		// if ( istep%context_update_step() == 0 ) update_score = true;
 
@@ -910,6 +903,12 @@ void CartesianMD::do_MD( core::pose::Pose & pose,
 			std::string mar_name = option[out::prefix];
 			ss_mar << mar_name << "_" << marTime << "ps.pdb";
 			pose.dump_pdb( ss_mar.str() );
+		}
+
+		// Dump lig only pdbs
+		if ( istep%ligonly_dumpstep_ == 0 ) {
+			dump_ligA( pose, istep );
+			dump_ligB( pose, istep );
 		}
 
 	}
@@ -1614,6 +1613,7 @@ void CartesianMD::parse_opts(
 	nve_mode_ = tag->getOption< bool >("nve_mode", false);
 	calc_intE_ = tag->getOption< bool >("calc_intE", false);
 	dumpstep_ =tag->getOption< core::Size >( "dumpstep", 100000 );
+	ligonly_dumpstep_ =tag->getOption< core::Size >( "ligonly_dumpstep", 50000);
 	// if ( use_rattle_ ) set_dt( 0.002 );
 	// TR << "mb debug: use_rattle_ /debug_mode_/nve_mode_ values after tag get option:" << use_rattle_ << "/" << debug_mode_ << "/" << nve_mode_ << std::endl;
 
@@ -1676,6 +1676,10 @@ void CartesianMD::provide_xml_schema( utility::tag::XMLSchemaDefinition & xsd )
 	attlist + XMLSchemaAttribute( "dumpstep", xs_integer,
 		"Sets the nstep interval at which a pdb will be dumped; so if dumpstep is 10, every 10 nsteps a pdb will dump."
 		"Default is 100,000 because at timestep of 0.002, this dumps a pdb every 200 ps. This is an integer." );
+	attlist + XMLSchemaAttribute( "ligonly_dumpstep", xs_integer,
+		"Sets the nstep interval at which two ligand-only pdbs will be dumped; these correspond to ligA and ligB in the complex but with protein removed."
+		"So if ligonly_dumpstep is 10, every 10 nsteps a ligA pdb and ligB pdb will dump."
+		"Default is 50,000 because at timestep of 0.002, this dumps a pdb every 100 ps. This is an integer. Mainly intended to help debug." );
 	attlist + XMLSchemaAttribute( "reportstep", xs_integer,
 		"When to report energies; so report happens every [reportstep] nsteps. "
 		"If reportstep = 50, then report happens every 50 nsteps. This is an integer. 50 is the default." );

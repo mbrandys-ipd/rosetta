@@ -169,6 +169,7 @@ private:
 	bool nve_mode_ = false;
 	bool calc_intE_ = false;
 	core::Size dumpstep_ = 100000;
+	core::Size ligonly_dumpstep_ = 50000;
 
 	core::pose::Pose native_;
 	bool header_on_ = true;
