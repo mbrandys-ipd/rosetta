@@ -16,7 +16,6 @@
 #define INCLUDED_protocols_ligand_docking_GALigandDock_GAOptimizer_hh
 
 #include <protocols/ligand_docking/GALigandDock/GridScorer.hh>
-#include <protocols/ligand_docking/GALigandDock/MCSAligner.hh>
 #include <utility/pointer/owning_ptr.hh>
 #include <core/id/AtomID.hh>
 #include <utility/vector1.hh>
@@ -92,20 +91,14 @@ public:
 	void set_rot_energy_cutoff( core::Real newval ) { rot_energy_cutoff_ = newval; }
 	void set_favor_native( core::Real newval ) { favor_native_ = newval; }
 	void set_align_reference_atom_ids( utility::vector1< core::id::AtomID > newval ){ align_reference_atom_ids_ = newval; }
-	void set_aligner( MCSAligner const& aligner ){ use_aligner_ = true; aligner_ = std::make_shared<MCSAligner>(aligner); }
-	void set_optH_only_rotamer( bool newval ) { optH_only_rotamer_ = newval; }
+	void set_altcrossover ( bool newval ) { altcrossover_ = newval; }
+	void set_single_mutation ( bool newval ) { single_mutation_ = newval; }
 
 private:
 	//// HELPER FUNCTIONS
 	/// @brief set up rotamer set
 	void
 	initialize_rotamer_set_and_scores(
-		LigandConformer lig
-	);
-
-	/// @brief set up rotamer set for optH only
-	void
-	initialize_optH_rotamer_set_and_scores(
 		LigandConformer lig
 	);
 
@@ -117,8 +110,6 @@ private:
 
 	/// @brief update our pool
 	void update_pool( LigandConformers & genes, LigandConformers & genes_new, core::Size, core::Real );
-
-	void align_conformers( LigandConformers & genes );
 
 private:
 	//// DATA
@@ -135,9 +126,8 @@ private:
 	utility::vector1< PlaceableRotamers > rotamer_data_;
 	RotamerPairEnergies rotamer_energies_;
 	utility::vector1< core::id::AtomID > align_reference_atom_ids_;
-	bool use_aligner_;
-	std::shared_ptr<MCSAligner> aligner_;
-	bool optH_only_rotamer_;
+	bool altcrossover_ = false;
+	bool single_mutation_ = false;
 };
 
 typedef utility::pointer::shared_ptr< GAOptimizer > GAOptimizerOP;

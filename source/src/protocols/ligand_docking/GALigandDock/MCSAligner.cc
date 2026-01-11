@@ -89,7 +89,7 @@ namespace ga_ligand_dock {
 static basic::Tracer TR( "protocols.ligand_docking.GALigandDock.MCSAligner" );
 
 MCSAligner::MCSAligner(core::pose::Pose const&reference_pose, core::Size reference_ligres_idx, MCSAlignerOptions & options):
-	reference_pose_(std::make_shared<core::pose::Pose>(reference_pose)),
+	reference_pose_(reference_pose),
 	reference_ligres_idx_(reference_ligres_idx)
 {
 	set_options(options);
@@ -103,20 +103,18 @@ MCSAligner::align_pose(core::pose::Pose const& template_pose, core::pose::Pose &
 	utility::vector1< numeric::xyzVector<numeric::Real> > template_coords, ligand_coords;
 	core::conformation::Residue const& template_rsd( template_pose.residue(template_idx) );
 	core::conformation::Residue const& ligand_rsd( ligand_pose.residue(ligand_idx) );
+	core::Size n_points( pair_indices_map.size() );
+	utility::vector1< numeric::Real > ww( n_points, 1.0 );
 	numeric::xyzMatrix< numeric::Real > R( 0.0 );
 	numeric::Real sigma3;
 	numeric::xyzVector< core::Real > com_template(0,0,0), com_ligand(0,0,0);
 
 	for ( auto it:pair_indices_map ) {
-		if ( it.second>template_rsd.nheavyatoms() ) continue; //skip aligning hydrogens
 		template_coords.push_back( template_rsd.xyz(it.second) );
 		com_template += template_rsd.xyz(it.second);
 		ligand_coords.push_back( ligand_rsd.xyz(it.first) );
 		com_ligand += ligand_rsd.xyz(it.first);
 	}
-	core::Size n_points( template_coords.size() );
-	utility::vector1< numeric::Real > ww( n_points, 1.0 );
-
 	com_template /= n_points;
 	com_ligand /= n_points;
 
@@ -194,13 +192,7 @@ MCSAligner::set_torsion_and_align(core::pose::Pose const& template_pose, core::p
 }
 
 void
-MCSAligner::apply( LigandConformer & lig){
-	core::Size n_conformers(1);
-	apply(lig, n_conformers);
-}
-
-void
-MCSAligner::apply( LigandConformer & lig, core::Size& n_conformers ){
+MCSAligner::apply( LigandConformer & lig ){
 	using namespace core::chemical;
 	using namespace core::chemical::rdkit;
 
@@ -209,9 +201,9 @@ MCSAligner::apply( LigandConformer & lig, core::Size& n_conformers ){
 	RestypeToRDMolOptions &restype2rdmol_options(options_.restype_to_rdmol_options);
 
 	if ( TR.Debug.visible() ) {
-		TR.Debug << "reference_pose_ size: " << reference_pose_->size() << " , reference_ligres_idx_ : " << reference_ligres_idx_ <<std::endl;
+		TR.Debug << "reference_pose_ size: " << reference_pose_.size() << " , reference_ligres_idx_ : " << reference_ligres_idx_ <<std::endl;
 	}
-	MutableResidueType reference_restype(reference_pose_->residue(reference_ligres_idx_).type());
+	MutableResidueType reference_restype(reference_pose_.residue(reference_ligres_idx_).type());
 	RestypeToRDMol reference_to_rdmol(reference_restype, restype2rdmol_options);
 
 	if ( lig.ligand_ids().size() != 1 ) {
@@ -264,13 +256,13 @@ MCSAligner::apply( LigandConformer & lig, core::Size& n_conformers ){
 		core::Size aidx_template(reference_restype.atom_index(atom_vd));
 		std::string aname(reference_restype.atom_name(atom_vd));
 		if ( TR.Debug.visible() ) {
-			TR.Debug << "Template pose atom index and atomname (apply): " << aidx_template << ", " << aname << std::endl; //mb edit, added (apply)
+			TR.Debug << "Template pose atom index and atomname: " << aidx_template << ", " << aname << std::endl;
 		}
 		atom_vd = ligand_restype_to_mol.index_to_vd()[iter->second];
 		core::Size aidx_ligand( ligand_restype.atom_index(atom_vd) );
 		aname = ligand_restype.atom_name(atom_vd);
 		if ( TR.Debug.visible() ) {
-			TR.Debug << "Ligand pose atom index and atomname (apply): " << aidx_ligand << ", " << aname << std::endl; //mb edit, added (apply)
+			TR.Debug << "Ligand pose atom index and atomname: " << aidx_ligand << ", " << aname << std::endl;
 		}
 		matched_pair_indices.emplace_back(aidx_template, aidx_ligand);
 		pair_indices_map[aidx_ligand] = aidx_template;
@@ -280,42 +272,21 @@ MCSAligner::apply( LigandConformer & lig, core::Size& n_conformers ){
 		TR.Debug << "matched_pair_indices size: " << matched_pair_indices.size() << std::endl;
 		TR.Debug << "set_torsion_and_align" << std::endl;
 	}
-	// (*ligpose).dump_pdb("pose_in_apply_but_before_tors_align_mb1a.pdb"); //mb edit
-	// std::cout << "pair indices map:" << pair_indices_map << std::endl; //mb edit
-	// to get the torsion_in_align_
-	auto start = std::chrono::system_clock::now(); //mb edit
-	set_torsion_and_align(*reference_pose_, *ligpose, pair_indices_map, reference_ligres_idx_, lig.ligand_ids()[1] );
-	// (*ligpose).dump_pdb("pose_in_apply_after_1st_tors_align_mb1b.pdb");//mb edit
-	utility::vector1< core::Size > free_chi_ndx;
-	for ( core::Size i=1; i<=torsion_in_align_.size(); i++ ) {
-		if ( !torsion_in_align_[i] ) free_chi_ndx.push_back(i);
-	}
-	lig.set_ligand_chis_fixed(torsion_in_align_);
-	lig.set_free_ligandchi_ndx(free_chi_ndx);
-	for ( core::Size i=1; i<=n_conformers; ++i){
-		if ( options_.perturb_torsion ) {
-			perturb_ligand_torsions( *ligpose, lig.ligand_ids(), torsion_in_align_, options_.perturb_torsion_rotation );
-			// realign after perturb torsion
-			set_torsion_and_align(*reference_pose_, *ligpose, pair_indices_map, reference_ligres_idx_, lig.ligand_ids()[1] );
-		}
 
-		if ( options_.perturb_rb ) {
-			perturb_ligand_rb( *ligpose, lig.ligand_ids(), options_.perturb_rb_translation, options_.perturb_rb_rotation );
-		}
+	set_torsion_and_align(reference_pose_, *ligpose, pair_indices_map, reference_ligres_idx_, lig.ligand_ids()[1] );
 
-		lig.update_conf(ligpose);
-
-		aligned_conformers_.push_back( lig );
-	}
-	// (*ligpose).dump_pdb("pose_at_end_of_apply_mb2a.pdb"); //mb edit
-	auto end = std::chrono::system_clock::now(); //mb edit
-	std::chrono::duration<double> elapsed_seconds = end-start; //mb edit
-	std::stringstream ss_mar; //mb edit
-	ss_mar << "mcsaligner_apply_mb_" << elapsed_seconds.count() << "_.pdb" ; //mb edit
-	std::cout << "in mcs apply dumping pose: " << ss_mar.str() << std::endl; //mb edit
-	ligpose->dump_pdb(ss_mar.str()); //mb edit
 	auto t1= std::chrono::steady_clock::now();
-	TR << "Time for generating " << n_conformers << " aligned conformers took " << std::chrono::duration<double>(t1-t0).count() << " seconds." << std::endl;
+	TR << "Time for set_torsion_and_align: " << std::chrono::duration<double>(t1-t0).count() << " seconds." << std::endl;
+
+	if ( options_.perturb_rb ) {
+		perturb_ligand_rb( *ligpose, lig.ligand_ids(), options_.perturb_rb_translation, options_.perturb_rb_rotation );
+	}
+	if ( options_.perturb_torsion ) {
+		perturb_ligand_torsions( *ligpose, lig.ligand_ids(), torsion_in_align_, options_.perturb_torsion_rotation );
+	}
+	lig.update_conf(ligpose);
+	auto t2= std::chrono::steady_clock::now();
+	TR << "Time for perturb_ligand_rb and perturb_ligand_torsions: " << std::chrono::duration<double>(t2-t1).count() << " seconds." << std::endl;
 }
 
 

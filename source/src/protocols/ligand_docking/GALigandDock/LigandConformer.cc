@@ -121,9 +121,33 @@ LigandConformer::initialize(
 		ligand_typenames_.push_back( pose->residue_type(ligid).name() );
 	}
 	update_conf( pose );
-	ligandchis_fixed_.resize( ligandchis_.size(), false );
-	for ( core::Size i=1; i<=ligandchis_.size(); ++i ) {
-		free_ligandchi_ndx_.push_back(i);
+
+	// get ligand chi dependence for alternative crossover
+	core::conformation::Residue ligand( pose->residue( ligids[1] ) );
+	core::Size nligchi( ligand.nchi());
+	ligandchi_downstream_.resize( nligchi );
+
+	utility::vector1< core::Size > atmindex_defining_chi( nligchi, 0 );
+
+	for ( core::Size ichi = 1; ichi <= nligchi; ++ichi ) {
+		utility::vector1< core::Size > const &chiatms = ligand.chi_atoms( ichi );
+		atmindex_defining_chi[ichi] = (ligand.atom_base(chiatms[2]) == chiatms[3])? chiatms[1] : chiatms[4];
+	}
+
+	// WARNING! This assumes nbr atom is atom tree root.
+	// THIS IS NOT NECESSARILY TRUE!
+	// if not true this will hang
+	for ( core::Size ichi = 1; ichi <= nligchi; ++ichi ) {
+		core::Size iatm( atmindex_defining_chi[ichi] );
+		core::Size ibase( ligand.atom_base(iatm) );
+		while ( ibase != ligand.nbr_atom() ) { // recurrsive until reaches to nbr atom
+			if ( atmindex_defining_chi.contains(iatm) ) {
+				core::Size chi_parent_of_ichi = atmindex_defining_chi.index_of(iatm);
+				if ( chi_parent_of_ichi != ichi ) ligandchi_downstream_[chi_parent_of_ichi].push_back( ichi );
+			}
+			iatm = ibase;
+			ibase = ligand.atom_base(iatm);
+		}
 	}
 
 	// get ligand chi dependence for alternative crossover
@@ -822,7 +846,6 @@ mutate(LigandConformer const &l ) {
 		core::Size nligchi = l.ligandchis_.size();
 		core::Size ntors_changed(0);
 		for ( core::Size j=1; j<=nligchi; ++j ) {
-			if ( l.is_ligand_chi_fixed(j) ) continue;
 			if ( numeric::random::rg().uniform() < l.torsmutationRate_ ) {
 				core::Real angle_j;
 				if ( l.ligchimutWidth_ > 180.0 ) { // complete randomization
@@ -838,9 +861,8 @@ mutate(LigandConformer const &l ) {
 		}
 
 		// make sure at least one torsion is mutated
-		if ( ntors_changed == 0 && !randomize_rt && nligchi > 0 && l.free_ligandchi_ndx_.size() > 0 ) {
-			core::Size ndx( numeric::random::rg().random_range(1, l.free_ligandchi_ndx_.size()) );
-			core::Size j = l.free_ligandchi_ndx_[ndx];
+		if ( ntors_changed == 0 && !randomize_rt && nligchi > 0 ) {
+			core::Size j( numeric::random::rg().random_range(1,nligchi) );
 			core::Real angle_j;
 			if ( l.ligchimutWidth_ > 180.0 ) { // complete randomization
 				angle_j = 360.0 * numeric::random::rg().uniform();

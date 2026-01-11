@@ -15,7 +15,7 @@
 #ifndef INCLUDED_protocols_ligand_docking_GALigandDock_MCSAligner_hh
 #define INCLUDED_protocols_ligand_docking_GALigandDock_MCSAligner_hh
 
-#include <protocols/ligand_docking/GALigandDock/LigandConformer.hh>
+#include <protocols/ligand_docking/GALigandDock/LigandConformer.fwd.hh>
 #include <protocols/ligand_docking/GALigandDock/GridScorer.hh>
 #include <core/types.hh>
 
@@ -69,9 +69,6 @@ public:
 	apply( LigandConformer & lig );
 
 	void
-	apply( LigandConformer & lig, core::Size& n_conformers );
-
-	void
 	align_pose(core::pose::Pose const& template_pose, core::pose::Pose &ligand_pose,
 		std::map<core::Size, core::Size> const& pair_indices_map, core::Size const& template_idx, core::Size const& ligand_idx);
 
@@ -80,8 +77,6 @@ public:
 		std::map<core::Size, core::Size> const& pair_indices_map, core::Size const& template_idx, core::Size const& ligand_idx);
 
 	utility::vector1<bool> const& torsion_in_align() const { return torsion_in_align_; }
-
-	LigandConformers const& get_aligned_conformers() const { return aligned_conformers_; }
 
 private:
 	/// @brief set constraints to target
@@ -96,12 +91,11 @@ private:
 
 
 private:
-	std::shared_ptr<const core::pose::Pose> reference_pose_;
+	core::pose::Pose const& reference_pose_;
 	core::Size reference_ligres_idx_;
 	MCSAlignerOptions options_;
 	bool perturb_rb_, perturb_torsion_;
 	utility::vector1<bool> torsion_in_align_;
-	LigandConformers aligned_conformers_;
 
 };
 
