@@ -150,34 +150,6 @@ LigandConformer::initialize(
 		}
 	}
 
-	// get ligand chi dependence for alternative crossover
-	core::conformation::Residue ligand( pose->residue( ligids[1] ) );
-	core::Size nligchi( ligand.nchi());
-	ligandchi_downstream_.resize( nligchi );
-
-	utility::vector1< core::Size > atmindex_defining_chi( nligchi, 0 );
-
-	for ( core::Size ichi = 1; ichi <= nligchi; ++ichi ) {
-		utility::vector1< core::Size > const &chiatms = ligand.chi_atoms( ichi );
-		atmindex_defining_chi[ichi] = (ligand.atom_base(chiatms[2]) == chiatms[3])? chiatms[1] : chiatms[4];
-	}
-
-	// WARNING! This assumes nbr atom is atom tree root.
-	// THIS IS NOT NECESSARILY TRUE!
-	// if not true this will hang
-	for ( core::Size ichi = 1; ichi <= nligchi; ++ichi ) {
-		core::Size iatm( atmindex_defining_chi[ichi] );
-		core::Size ibase( ligand.atom_base(iatm) );
-		while ( ibase != ligand.nbr_atom() ) { // recurrsive until reaches to nbr atom
-			if ( atmindex_defining_chi.contains(iatm) ) {
-				core::Size chi_parent_of_ichi = atmindex_defining_chi.index_of(iatm);
-				if ( chi_parent_of_ichi != ichi ) ligandchi_downstream_[chi_parent_of_ichi].push_back( ichi );
-			}
-			iatm = ibase;
-			ibase = ligand.atom_base(iatm);
-		}
-	}
-
 	core::pose::PoseOP ref_pose_ligand ( new core::pose::Pose );
 	for ( core::Size i=1; i<=ligids.size(); ++i ) {
 		if ( i==1 ) {
