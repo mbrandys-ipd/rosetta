@@ -1020,20 +1020,31 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 	force before filling it up again.
 	*/
 	
-	// //mb block start (variables being initialized for debug_mode_ comments)
-	// //store values before force gets applied in next for loop
-	// Multivec vel_loc_pre( vel_loc ), acc_loc_pre( acc_loc );
-	// double avg_dvel, avg_dacc, avg_vel_pre, avg_vel_post, avg_acc_pre, avg_acc_post;
-	// avg_dvel = avg_dacc = avg_vel_pre = avg_vel_post = avg_acc_pre = avg_acc_post = 0.0;
-	// double max_dvel, min_dvel;
-	// max_dvel = min_dvel = 0.0;
-	// double max_vel_pre, min_vel_pre, max_vel_post, min_vel_post;
-	// max_vel_pre = min_vel_pre = max_vel_post = min_vel_post = vel_loc_pre[1];
-	// double max_dacc, min_dacc;
-	// max_dacc = min_dacc = 0.0; 
-	// double max_acc_pre, min_acc_pre, max_acc_post, min_acc_post;
-	// max_acc_pre = min_acc_pre = max_acc_post = min_acc_post = acc_loc_pre[1];
-	// //mb block end
+	//mb block start (variables being initialized for debug_mode_ comments)
+	double max_speed_pre = 0.0;
+	double max_speed_post = 0.0;
+
+	double max_accel_mag_pre = 0.0;
+	double max_accel_mag_post = 0.0;
+
+	double avg_speed_pre = 0.0;
+	double avg_speed_post = 0.0;
+
+	double avg_accel_mag_post = 0.0;
+	double avg_accel_mag_pre = 0.0;
+
+	core::Size n_atoms_counted = 0;
+
+	double max_vel_idof_pre = 0.0;
+	double min_vel_idof_pre = 0.0;
+	double max_acc_idof_pre = 0.0;
+	double min_acc_idof_pre = 0.0;
+
+	double max_vel_idof_post = 0.0;
+	double min_vel_idof_post = 0.0;
+	double max_acc_idof_post = 0.0;
+	double min_acc_idof_post = 0.0;
+	//mb block end
 
 	// Here, convert force into acceleration
 	// and integrate remaining half of velocity
@@ -1050,32 +1061,47 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 		// pass Virtual atoms
 		if ( mass(i_atm) < 1e-3 ) continue;
 
-		//acc(i_dof) = -MDForceFactor*force[i_dof]/mass(i_atm);
-		//vel(i_dof) += 0.5*acc(i_dof)*dt();
-
-		// if (debug_mode_) {
-		// 	// //accumulating to get pre-calculation average vel and acc
-		// 	// avg_vel_pre += vel_loc[i_dof];
-		// 	// avg_acc_pre += acc_loc[i_dof];
-		// 	//get max and min of pre-calculation average vel and acc
-		// 	if ( vel_loc[i_dof] > max_vel_pre ) {
-		// 		max_vel_pre = vel_loc[i_dof];
-		// 	} 
-		// 	if ( vel_loc[i_dof] < min_vel_pre ) {
-		// 		min_vel_pre = vel_loc[i_dof];
-		// 	}
-		// 	if ( acc_loc[i_dof] > max_acc_pre ) {
-		// 		max_acc_pre = acc_loc[i_dof];
-		// 	}
-		// 	if ( acc_loc[i_dof] < min_acc_pre ) {
-		// 		min_acc_pre = acc_loc[i_dof];
-		// 	}
-
-		// }
 		// std::cout << "mb debug loop(acc/vel from force loop), iatm: " << i_atm << " idof: " << i_dof << " force[idof]: " << force[i_dof] << std::endl;
 
 		acc_loc[i_dof] = -MDForceFactor*force[i_dof]/mass(i_atm); 
 		vel_loc[i_dof] += 0.5*acc_loc[i_dof]*dt();
+
+		if ( debug_mode_ ) {
+			if (vel_loc[i_dof] > max_vel_idof_pre) {
+				max_vel_idof_pre = vel_loc[i_dof];
+			}
+			if (vel_loc[i_dof] < min_vel_idof_pre) {
+				min_vel_idof_pre = vel_loc[i_dof];
+			}
+			if (acc_loc[i_dof] > max_acc_idof_pre) {
+				max_acc_idof_pre = acc_loc[i_dof];
+			}
+			if (acc_loc[i_dof] < min_acc_idof_pre) {
+				min_acc_idof_pre = acc_loc[i_dof];
+			}
+
+			if (i_dof % 3 == 0) {  // We've just finished x,y,z for this atom
+					core::Size base = i_dof - 2;  // Index of x component
+					
+					// Velocity magnitude
+					double v_mag_pre = sqrt(vel_loc[base]*vel_loc[base] + 
+									vel_loc[base+1]*vel_loc[base+1] + 
+									vel_loc[base+2]*vel_loc[base+2]);
+					
+					// Acceleration magnitude  
+					double a_mag_pre = sqrt(acc_loc[base]*acc_loc[base] + 
+									acc_loc[base+1]*acc_loc[base+1] + 
+									acc_loc[base+2]*acc_loc[base+2]);
+					
+					// Track max speeds pre cap logic
+					if (v_mag_pre > max_speed_pre) max_speed_pre = v_mag_pre;
+					if (a_mag_pre > max_accel_mag_pre) max_accel_mag_pre = a_mag_pre;
+					
+					// Accumulate for averaging
+					avg_speed_pre += v_mag_pre;
+					avg_accel_mag_pre += a_mag_pre;
+				}
+		}
 
 		if (cap_on) {
 			if (vel_loc[i_dof] > vel_cap) {
@@ -1095,73 +1121,56 @@ void CartesianMD::VelocityVerlet_Integrator( core::pose::Pose &pose,
 			}
 		}
 
-		// if (debug_mode_) {
-		// 	// //get values related to delta variables now that it's post-calculation/post-cap code
-		// 	// double dvel = vel_loc[i_dof] - vel_loc_pre[i_dof];
-		// 	// double dacc = acc_loc[i_dof] - acc_loc_pre[i_dof];
-		// 	// //accumulating for averages:
-		// 	// avg_dvel += dvel;
-		// 	// avg_dacc += dacc;
-		// 	// avg_vel_post += vel_loc[i_dof];
-		// 	// avg_acc_post += acc_loc[i_dof];
-		// 	// //getting max and min values:
-		// 	// if (dvel > max_dvel) {
-		// 	// 	max_dvel = dvel;
-		// 	// }
-		// 	// if (dvel < min_dvel) {
-		// 	// 	min_dvel = dvel;
-		// 	// }
-		// 	// if (dacc > max_dacc) {
-		// 	// 	max_dacc = dacc;
-		// 	// }
-		// 	// if (dacc < min_dacc) {
-		// 	// 	min_dacc = dacc;
-		// 	// }
+		if ( debug_mode_ ) {
 
-		// 	if (vel_loc[i_dof] > max_vel_post) {
-		// 		max_vel_post = vel_loc[i_dof];
-		// 	}
-		// 	if (vel_loc[i_dof] < min_vel_post) {
-		// 		min_vel_post = vel_loc[i_dof];
-		// 	}
-		// 	if (acc_loc[i_dof] > max_acc_post) {
-		// 		max_acc_post = acc_loc[i_dof];
-		// 	}
-		// 	if (acc_loc[i_dof] < min_acc_post) {
-		// 		min_acc_post = acc_loc[i_dof];
-		// 	}
-		// }
+			if (vel_loc[i_dof] > max_vel_idof_post) {
+				max_vel_idof_post = vel_loc[i_dof];
+			}
+			if (vel_loc[i_dof] < min_vel_idof_post) {
+				min_vel_idof_post = vel_loc[i_dof];
+			}
+			if (acc_loc[i_dof] > max_acc_idof_post) {
+				max_acc_idof_post = acc_loc[i_dof];
+			}
+			if (acc_loc[i_dof] < min_acc_idof_post) {
+				min_acc_idof_post = acc_loc[i_dof];
+			}
+
+			if (i_dof % 3 == 0) {  // We've just finished x,y,z for this atom
+					core::Size base = i_dof - 2;  // Index of x component
+					
+					// Velocity magnitude
+					double v_mag_post = sqrt(vel_loc[base]*vel_loc[base] + 
+									vel_loc[base+1]*vel_loc[base+1] + 
+									vel_loc[base+2]*vel_loc[base+2]);
+					
+					// Acceleration magnitude  
+					double a_mag_post = sqrt(acc_loc[base]*acc_loc[base] + 
+									acc_loc[base+1]*acc_loc[base+1] + 
+									acc_loc[base+2]*acc_loc[base+2]);
+					
+					// Track max speeds post cap logic
+					if (v_mag_post > max_speed_post) max_speed_post = v_mag_post;
+					if (a_mag_post > max_accel_mag_post) max_accel_mag_post = a_mag_post;
+					
+					// Accumulate for averaging
+					avg_speed_post += v_mag_post;
+					avg_accel_mag_post += a_mag_post;
+					n_atoms_counted++;
+			}
+		}
 
 	}
 
-	// if ( (debug_mode_) && (istep%report_step() == 0 ) )  {
-	// if (debug_mode_)  {
-	// 	// //getting averages
-	// 	// avg_dvel = avg_dvel/(n_dof());
-	// 	// avg_dacc = avg_dacc/(n_dof());
-	// 	// avg_vel_pre = avg_vel_pre/(n_dof());
-	// 	// avg_vel_post = avg_vel_post/(n_dof());
-	// 	// avg_acc_pre = avg_acc_pre/(n_dof());
-	// 	// avg_acc_post = avg_acc_post/(n_dof());
-
-	// 	// //mbedit - reporting values
-	// 	// TR << "mbedit_vvi nstep:" << istep
-	// 	// << ":avg_dvel:" << avg_dvel << ":avg_dacc:" << avg_dacc << ":avg_vel_pre:" << avg_vel_pre 
-	// 	// << ":avg_vel_post:" << avg_vel_post << ":avg_acc_pre:" << avg_acc_pre << ":avg_acc_post:" << avg_acc_post
-	// 	// << ":max_dvel:" << max_dvel << ":min_dvel:" << min_dvel
-	// 	// << ":max_vel_pre:" << max_vel_pre << ":min_vel_pre:" << min_vel_pre << ":max_vel_post:" << max_vel_post << ":min_vel_post:" << min_vel_post
-	// 	// << ":max_dacc:" << max_dacc << ":min_dacc:" << min_dacc
-	// 	// << ":max_acc_pre:" << max_acc_pre << ":min_acc_pre:" << min_acc_pre << ":max_acc_post:" << max_acc_post << ":min_acc_post:" << min_acc_post
-	// 	// << std::endl;
-	// 	// //mbedit
-
-	// 	//mbedit - reporting values for debug_mode_ output
-	// 	TR << "mbedit_vvi nstep:" << istep
-	// 	<< ":max_vel_pre:" << max_vel_pre << ":min_vel_pre:" << min_vel_pre << ":max_vel_post:" << max_vel_post << ":min_vel_post:" << min_vel_post
-	// 	<< ":max_acc_pre:" << max_acc_pre << ":min_acc_pre:" << min_acc_pre << ":max_acc_post:" << max_acc_post << ":min_acc_post:" << min_acc_post
-	// 	<< std::endl;
-	// 	//mbedit
-	// }
+	if ( (debug_mode_) && (istep%report_step() == 0 ) )  {
+		//mbedit - reporting values
+		TR << "mbedit_vvi nstep:" << istep
+		<< ":max_speed_pre:" << max_speed_pre << ":max_speed_post:" << max_speed_post << ":max_accel_mag_pre:" << max_accel_mag_pre << ":max_accel_mag_post:" << max_accel_mag_post
+		<< ":avg_speed_pre:" << avg_speed_pre/n_atoms_counted << ":avg_speed_post:" << avg_speed_post/n_atoms_counted << ":avg_accel_mag_post:" << avg_accel_mag_post/n_atoms_counted << ":avg_accel_mag_pre:" << avg_accel_mag_pre/n_atoms_counted <<
+		":max_vel_idof_pre:" << max_vel_idof_pre << ":min_vel_idof_pre:" << min_vel_idof_pre << ":max_vel_idof_post:" << max_vel_idof_post << ":min_vel_idof_post:" << min_vel_idof_post << ":max_acc_idof_pre:" << max_acc_idof_pre << ":min_acc_idof_pre:" << min_acc_idof_pre << ":max_acc_idof_post:" << max_acc_idof_post << ":min_acc_idof_post:" << min_acc_idof_post
+		<< std::endl;
+		//mbedit
+	}
 
 	// Multivec xyz_loc_temp4( xyz_loc ), vel_loc_temp4( vel_loc ), acc_loc_temp4( acc_loc ); //mbedit line - storing pre-rattle2 values
 
@@ -1217,8 +1226,9 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 		vel_loc[i_dof] = scalar; //default behaviour is this line
 		// vel_loc[i_dof] = 1.0; //mb debug, this is for debugging purposes
 
-		//mbedit cap_on:
+		//mbedit:
 		if ( cap_on ) {
+
 			if (vel_loc[i_dof] > vel_cap) {
 				vel_loc[i_dof] = vel_cap;
 			}
@@ -1226,6 +1236,7 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 			if (vel_loc[i_dof] < (vel_cap * -1.0)) {
 				vel_loc[i_dof] = (vel_cap * -1.0);
 			}
+
 		}
 		//mbedit end
 
@@ -1266,26 +1277,52 @@ void CartesianMD::initialize_velocity( core::Real const &temperature, core::pose
 	Thermostat thermostat( temperature, n_dof_temp() );
 	Real init_temp = thermostat.get_temperature( vel_loc, mass() );
 	Real const scale( temperature/init_temp );
-	// double max_vel, min_vel, avg_vel;
-	// max_vel = min_vel = avg_vel = 0;
+
+	double max_speed_init = 0.0;
+	double max_accel_mag_init = 0.0;
+	double max_vel_idof = 0.0;
+	double min_vel_idof = 0.0;
 
 	for ( core::Size i_dof=1; i_dof<=n_dof(); i_dof++ ) {
 		vel_loc[i_dof] *= scale;
-		// if (debug_mode_) {
-		// 	avg_vel += vel_loc[i_dof];
-		// 	if (vel_loc[i_dof] > max_vel) {
-		// 		max_vel = vel_loc[i_dof];
-		// 	}
-		// 	if (vel_loc[i_dof] < min_vel) {
-		// 		min_vel = vel_loc[i_dof];
-		// 	}
-		// }
+		//mbedit start
+		if ( debug_mode_ ) {
+
+			if (vel_loc[i_dof] > max_vel_idof) {
+				max_vel_idof = vel_loc[i_dof];
+			}
+
+			if (vel_loc[i_dof] < min_vel_idof) {
+				min_vel_idof = vel_loc[i_dof];
+			}
+
+			if (i_dof % 3 == 0) {  // We've just finished x,y,z for this atom
+					core::Size base = i_dof - 2;  // Index of x component
+					
+					// Velocity magnitude
+					double v_mag_init = sqrt(vel_loc[base]*vel_loc[base] + 
+									vel_loc[base+1]*vel_loc[base+1] + 
+									vel_loc[base+2]*vel_loc[base+2]);
+					
+					// Acceleration magnitude  
+					double a_mag_init = sqrt(acc_loc[base]*acc_loc[base] + 
+									acc_loc[base+1]*acc_loc[base+1] + 
+									acc_loc[base+2]*acc_loc[base+2]);
+					
+					// Track max speeds post cap logic
+					if (v_mag_init > max_speed_init) max_speed_init = v_mag_init;
+					if (a_mag_init > max_accel_mag_init) max_accel_mag_init = a_mag_init;
+			}
+		}
+		//mbedit end
 	}
 	
-	// if (debug_mode_) {
-	// 	avg_vel = avg_vel/(n_dof());
-	// 	TR << "mb_temp:max_scaled_vel:" << max_vel << ":min_scaled_vel:" << min_vel << ":avg_scaled_vel:" << avg_vel << std::endl;
-	// }
+	//mbedit start
+	if ( debug_mode_ ) {
+		TR << "mbedit_initialize_velocity:max speed was " << max_speed_init <<
+		", max acc magnitude was " << max_accel_mag_init << ", max vel idof:" << max_vel_idof << ", min vel idof:" << min_vel_idof << std::endl;
+	}
+	//mbedit end
 
 	set_vel( vel_loc );
 	Real init_temp2 = thermostat.get_temperature( vel_loc, mass() );
@@ -1695,7 +1732,7 @@ void CartesianMD::provide_xml_schema( utility::tag::XMLSchemaDefinition & xsd )
 		"but is afterwards 'frozen'; temperature is still measured but no rescaling of velocity occurs i.e. temperature is never 'set', just monitored. " );
 	attlist + XMLSchemaAttribute( "debugMD", xsct_rosetta_bool,
 		"Turns on debug mode. Default is false. "
-		"When this is true, additional information is printed every reportstep, such as average changes in acc, vel, or position. "
+		"When this is true, additional information is printed every reportstep, such as max speed, max acceleration magnitude and other vel/acc related metrics. "
 		"Also gets additional score term values and prints THOSE energies such as fa_sol, lkball, hbond and other 2b terms. " );
 	attlist + XMLSchemaAttribute( "scorefxn", xs_string,
 		"Specify a scorefunction to run MD simulation with" );

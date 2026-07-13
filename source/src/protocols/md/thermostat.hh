@@ -62,7 +62,8 @@ public:
 		for ( core::Size i_dof = 1; i_dof <= vel.size(); ++i_dof ) {
 			vel[i_dof] *= lambda;
 		}
-		// std::cout << "mb debug, inside thermostat rescale(); nve_mode is: " << nve_mode << "and rescale factor (lambda) is: " << lambda << std::endl;
+		// mbedit print line:
+		// std::cout << "mb_therm_rescale():lambda:" << lambda << std::endl;	
 	}
 
 	core::Real
